@@ -1,17 +1,13 @@
-# cinestream
+# LunarDrift
 
-A new Flutter project.
+An elegant, modern native streaming app.
+Compatible with iOS (Sideloading), Android, macOS, Windows and online at https://lunardrift.watch
 
 ## Getting Started
 
-This project is a starting point for a Flutter application.
+We are getting very close to launch, but for now the iOS version is fully functinal. 
 
-A few resources to get you started if this is your first Flutter project:
+## iOS (Sideloaded)
+You can use iLoadly (Windows/macOS) to sideload SideStore (stable) and then use that alongside LocalDevVPN and Actions (on the app store) with an automation to install the app via .ipa and permanentaly refresh it (keep it installed indefinitely).
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Others Coming Soon
