@@ -2,15 +2,14 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
-import 'package:photo_manager/photo_manager.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-enum DownloadStatus { none, requesting, downloading, finalizing, done, failed }
+enum DownloadStatus { none, requesting, downloading, done, failed }
 
 class SimpleLock {
   Completer<void>? _completer;
@@ -42,12 +41,15 @@ class SimpleLock {
 
 class DownloadTask extends ChangeNotifier {
   final String mediaId;
+  final String title;
+  final String? posterPath;
+  final String mediaType;
   DownloadStatus _status = DownloadStatus.none;
   DownloadStatus get status => _status;
   double _progress = 0.0;
   double get progress => _progress;
 
-  DownloadTask({required this.mediaId});
+  DownloadTask({required this.mediaId, required this.title, this.posterPath, required this.mediaType});
 
   void update({DownloadStatus? newStatus, double? newProgress}) {
     bool changed = false;
@@ -65,6 +67,44 @@ class DownloadTask extends ChangeNotifier {
   }
 }
 
+class CachedDownloadItem {
+  final String mediaId;
+  final String title;
+  final String? posterPath;
+  final String mediaType;
+  final String filePath;
+  final DateTime downloadedAt;
+
+  CachedDownloadItem({
+    required this.mediaId,
+    required this.title,
+    this.posterPath,
+    required this.mediaType,
+    required this.filePath,
+    required this.downloadedAt,
+  });
+
+  factory CachedDownloadItem.fromJson(Map<String, dynamic> json) {
+    return CachedDownloadItem(
+      mediaId: json['mediaId'] as String,
+      title: json['title'] as String,
+      posterPath: json['posterPath'] as String?,
+      mediaType: json['mediaType'] as String,
+      filePath: json['filePath'] as String,
+      downloadedAt: DateTime.tryParse(json['downloadedAt'] as String? ?? '') ?? DateTime.now(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'mediaId': mediaId,
+    'title': title,
+    'posterPath': posterPath,
+    'mediaType': mediaType,
+    'filePath': filePath,
+    'downloadedAt': downloadedAt.toIso8601String(),
+  };
+}
+
 class DownloadManager {
   static final DownloadManager _instance = DownloadManager._internal();
   factory DownloadManager() => _instance;
@@ -75,8 +115,12 @@ class DownloadManager {
   final Map<String, bool> _cancellations = {};
   final SimpleLock _lock = SimpleLock();
 
+  List<DownloadTask> get allTasks => _tasks.values.toList();
   final StreamController<String> _messageController = StreamController.broadcast();
   Stream<String> get messages => _messageController.stream;
+
+  final ValueNotifier<DownloadTask?> _activeTaskNotifier = ValueNotifier(null);
+  ValueNotifier<DownloadTask?> get activeTaskNotifier => _activeTaskNotifier;
 
   static const String _browserUserAgent =
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
@@ -103,41 +147,43 @@ class DownloadManager {
     }
   }
 
+  Future<void> removeDownloadFromCache(String mediaId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final cachedDownloads = prefs.getStringList('downloadedItemsCache') ?? [];
+    cachedDownloads.removeWhere((item) {
+      try {
+        final decoded = json.decode(item) as Map<String, dynamic>;
+        return decoded['mediaId'] == mediaId;
+      } catch (e) {
+        return false;
+      }
+    });
+    await prefs.setStringList('downloadedItemsCache', cachedDownloads);
+  }
+
   Future<void> startDownload({
     required String mediaId,
     required String title,
     required String year,
     required String resolution,
+    String? posterPath,
+    required String mediaType,
   }) async {
     if (_tasks.containsKey(mediaId) &&
         (_tasks[mediaId]!.status == DownloadStatus.downloading ||
-            _tasks[mediaId]!.status == DownloadStatus.requesting ||
-            _tasks[mediaId]!.status == DownloadStatus.finalizing)) {
+            _tasks[mediaId]!.status == DownloadStatus.requesting)) {
       return;
     }
 
-    final task = DownloadTask(mediaId: mediaId);
+    final task = DownloadTask(mediaId: mediaId, title: title, posterPath: posterPath, mediaType: mediaType);
     _tasks[mediaId] = task;
     _cancellations[mediaId] = false;
-
-    // Check for a previously downloaded file that failed during conversion.
-    final docsDir = await getApplicationDocumentsDirectory();
-    final pendingDir = Directory('${docsDir.path}/pending_conversions');
-    await pendingDir.create(recursive: true);
-    final rawFileName = '$mediaId+$title.tmp'.replaceAll(RegExp(r'[^\w\s\.-]+'), '').replaceAll(' ', '_');
-    final pendingPath = '${pendingDir.path}/$rawFileName';
-    final pendingFile = File(pendingPath);
-
-    if (await pendingFile.exists()) {
-      _messageController.add('INFO:Found incomplete download. Retrying finalization...');
-      await _processDownload(mediaId, title, null, localFilePath: pendingPath);
-      return;
-    }
+    _activeTaskNotifier.value = task;
 
     task.update(newStatus: DownloadStatus.requesting, newProgress: 0.0);
 
     try {
-      final url = Uri.parse('http://162.191.17.178:8088/query');
+      final url = Uri.parse('http://192.3.222.59:8088/query');
       final headers = {
         'Content-Type': 'application/json',
         'Authorization': 'Basic ${base64Encode(utf8.encode('cinestream:privateapi'))}',
@@ -170,114 +216,47 @@ class DownloadManager {
     }
   }
 
-  Future<void> _processDownload(String mediaId, String title, String? downloadUrl, {String? localFilePath}) async {
+  Future<void> _addDownloadToCache(DownloadTask task, String filePath) async {
+    final prefs = await SharedPreferences.getInstance();
+    final cachedDownloads = prefs.getStringList('downloadedItemsCache') ?? [];
+
+    final newItem = CachedDownloadItem(
+      mediaId: task.mediaId,
+      title: task.title,
+      posterPath: task.posterPath,
+      mediaType: task.mediaType,
+      filePath: filePath,
+      downloadedAt: DateTime.now(),
+    );
+
+    cachedDownloads.removeWhere((item) {
+      try {
+        return (json.decode(item) as Map<String, dynamic>)['mediaId'] == task.mediaId;
+      } catch (e) { return false; }
+    });
+
+    cachedDownloads.add(json.encode(newItem.toJson()));
+    await prefs.setStringList('downloadedItemsCache', cachedDownloads);
+  }
+
+  Future<void> _processDownload(String mediaId, String title, String downloadUrl) async {
     final task = _tasks[mediaId]!;
 
-    final ps = await PhotoManager.requestPermissionExtend();
-    if (!ps.isAuth && !ps.hasAccess) {
-      task.update(newStatus: DownloadStatus.failed);
-      _messageController.add('ERROR:Photo library permission is required.');
-      if (ps == PermissionState.denied) await openAppSettings();
-      _scheduleTaskCleanup(mediaId);
-      return;
-    }
-
-    final rawFileName = '$mediaId+$title.tmp'.replaceAll(RegExp(r'[^\w\s\.-]+'), '').replaceAll(' ', '_');
+    final docsDir = await getApplicationDocumentsDirectory();
+    final finalDir = Directory('${docsDir.path}/CineStream/Movies');
+    await finalDir.create(recursive: true);
     final finalFileName = '$mediaId+$title.mp4'.replaceAll(RegExp(r'[^\w\s\.-]+'), '').replaceAll(' ', '_');
-    final tempDir = await getTemporaryDirectory();
-    final rawTempPath = '${tempDir.path}/$rawFileName';
-    final finalTempPath = '${tempDir.path}/$finalFileName';
-    final rawTempFile = File(rawTempPath);
-    final finalTempFile = File(finalTempPath);
+    final finalPath = '${finalDir.path}/$finalFileName';
 
     try {
-      if (localFilePath != null) {
-        // This is a retry from a saved file. Move it to the temp dir for processing.
-        await File(localFilePath).rename(rawTempPath);
-      } else if (downloadUrl != null) {
-        task.update(newStatus: DownloadStatus.downloading);
-        await _downloadFileInParts(mediaId, downloadUrl, rawTempPath);
-      } else {
-        throw Exception('Process download called without a URL or local file.');
-      }
+      task.update(newStatus: DownloadStatus.downloading);
+      await _downloadFileInParts(mediaId, downloadUrl, finalPath);
 
       if (_cancellations[mediaId] == true) throw http.ClientException("Download cancelled by user.");
 
-      task.update(newStatus: DownloadStatus.finalizing, newProgress: 0.0);
-      _messageController.add('INFO:Finalizing download...');
-
-      String videoCodec;
-      if (Platform.isIOS || Platform.isMacOS) {
-        videoCodec = '-c:v h264_videotoolbox';
-      } else {
-        videoCodec = '-c:v libx264 -preset ultrafast';
-      }
-
-      // Use executeAsync to get progress updates during conversion.
-      final completer = Completer<ReturnCode?>();
-      double totalDurationInMs = 0;
-
-      await FFmpegKit.executeAsync(
-        '-y -i "$rawTempPath" -map 0:v? $videoCodec -map 0:a? -c:a aac -map 0:s? -c:s mov_text "$finalTempPath"',
-        (session) async {
-          final returnCode = await session.getReturnCode();
-          completer.complete(returnCode);
-        },
-        (log) {
-          // Parse the total duration from the FFmpeg logs.
-          if (totalDurationInMs == 0) {
-            final regex = RegExp(r"Duration: (\d{2}):(\d{2}):(\d{2})\.(\d{2})");
-            final match = regex.firstMatch(log.getMessage());
-            if (match != null) {
-              final hours = double.parse(match.group(1)!);
-              final minutes = double.parse(match.group(2)!);
-              final seconds = double.parse(match.group(3)!);
-              final milliseconds = double.parse(match.group(4)!) * 10;
-              totalDurationInMs = (hours * 3600 + minutes * 60 + seconds) * 1000 + milliseconds;
-            }
-          }
-        },
-        (statistics) {
-          // Update progress based on the current time of the statistics callback.
-          if (totalDurationInMs > 0) {
-            final progress = (statistics.getTime() / totalDurationInMs).clamp(0.0, 1.0);
-            task.update(newProgress: progress);
-          }
-        },
-      );
-
-      final returnCode = await completer.future;
-
-      if (returnCode == null || !ReturnCode.isSuccess(returnCode)) {
-        // Conversion failed, save the raw file for a later retry.
-        final docsDir = await getApplicationDocumentsDirectory();
-        final pendingDir = Directory('${docsDir.path}/pending_conversions');
-        await pendingDir.create(recursive: true);
-        final pendingPath = '${pendingDir.path}/$rawFileName';
-        if (await rawTempFile.exists()) {
-          await rawTempFile.rename(pendingPath);
-        }
-        throw Exception('Failed to finalize video. Will retry on next attempt. (FFmpeg Error)');
-      }
-
-      // ignore: unnecessary_nullable_for_final_variable_declarations
-      final AssetEntity? entity = await PhotoManager.editor.saveVideo(finalTempFile, title: finalFileName, relativePath: "Movies/CineStream");
-
-      if (entity != null) {
-        task.update(newStatus: DownloadStatus.done, newProgress: 1.0);
-        _messageController.add('SUCCESS:Download complete! Saved to "CineStream" album.');
-
-        // On success, ensure any lingering pending file is deleted.
-        final docsDir = await getApplicationDocumentsDirectory();
-        final pendingDir = Directory('${docsDir.path}/pending_conversions');
-        final pendingPath = '${pendingDir.path}/$rawFileName';
-        final pendingFile = File(pendingPath);
-        if (await pendingFile.exists()) {
-          await pendingFile.delete();
-        }
-      } else {
-        throw Exception('Failed to save video to gallery.');
-      }
+      task.update(newStatus: DownloadStatus.done, newProgress: 1.0);
+      _messageController.add('SUCCESS:Download complete! Saved to local files.');
+      await _addDownloadToCache(task, finalPath);
     } catch (e) {
       if (_cancellations[mediaId] != true) {
         task.update(newStatus: DownloadStatus.failed);
@@ -288,8 +267,6 @@ class DownloadManager {
       _cancellations.remove(mediaId);
       _scheduleTaskCleanup(mediaId);
 
-      if (await rawTempFile.exists()) await rawTempFile.delete();
-      if (await finalTempFile.exists()) await finalTempFile.delete();
     }
   }
 
@@ -308,21 +285,36 @@ class DownloadManager {
     final supportsRange = headResponse.headers['accept-ranges'] == 'bytes';
     if (!supportsRange) throw Exception('Server does not support parallel downloads.');
 
-    final partCount = 8;
+    // Dynamically adjust part count based on network type.
+    // Cellular networks benefit from more connections to overcome latency.
+    // Wi-Fi can be faster with fewer connections, as consumer routers can struggle with too many parallel streams.
+    int partCount;
+    final connectivityResult = await (Connectivity().checkConnectivity());
+    if (connectivityResult.contains(ConnectivityResult.wifi)) {
+      partCount = 4; // Use fewer connections on Wi-Fi to avoid overwhelming the router.
+    } else if (connectivityResult.contains(ConnectivityResult.mobile)) {
+      partCount = 8; // Use more connections on Cellular to maximize throughput.
+    } else {
+      partCount = 6; // A safe default for Ethernet or unknown networks.
+    }
+
     final partSize = (totalSize / partCount).ceil();
     final parts = List.generate(partCount, (i) => i);
-    final file = await File(savePath).open(mode: FileMode.write);
-    int totalDownloaded = 0;
     final task = _tasks[mediaId]!;
+    final tempDir = await getTemporaryDirectory();
+    final List<String> partPaths = [];
+    int totalDownloaded = 0;
 
     try {
-      await file.truncate(totalSize);
+      Future<void> downloadPart(int partIndex) async {
+        final partPath = '${tempDir.path}/$mediaId-part$partIndex.tmp';
+        partPaths.add(partPath);
+        final partFile = File(partPath);
 
-      Future<void> downloadPart(int i) async {
         const maxRetries = 5;
         int retryCount = 0;
         int bytesDownloadedForPart = 0;
-        final partStartByte = i * partSize;
+        final partStartByte = partIndex * partSize;
         final partEndByte = min(partStartByte + partSize - 1, totalSize - 1);
         final expectedPartSize = partEndByte - partStartByte + 1;
 
@@ -335,6 +327,7 @@ class DownloadManager {
           final rangeHeader = 'bytes=$currentRequestStartByte-$partEndByte';
           final partClient = http.Client();
           _clients[mediaId]!.add(partClient);
+          final partFileSink = partFile.openWrite(mode: bytesDownloadedForPart > 0 ? FileMode.append : FileMode.write);
 
           try {
             final request = http.Request('GET', Uri.parse(url))..headers['Range'] = rangeHeader..headers['User-Agent'] = _browserUserAgent;
@@ -347,32 +340,62 @@ class DownloadManager {
                 partClient.close();
                 return;
               }
+              partFileSink.add(chunk);
+              bytesDownloadedForPart += chunk.length;
               await _lock.synchronized(() async {
-                await file.setPosition(partStartByte + bytesDownloadedForPart);
-                await file.writeFrom(chunk);
                 totalDownloaded += chunk.length;
                 task.update(newProgress: (totalDownloaded / totalSize).clamp(0.0, 1.0));
               });
-              bytesDownloadedForPart += chunk.length;
             }
-            return;
           } catch (e) {
-            partClient.close();
             if (e is SocketException || e is http.ClientException || e is TimeoutException || e is HandshakeException) {
               retryCount++;
-              if (retryCount > maxRetries) throw Exception('Part $i failed after $maxRetries retries: $e');
+              if (retryCount > maxRetries) throw Exception('Part $partIndex failed after $maxRetries retries: $e');
               final delay = pow(2, retryCount).toInt();
               await Future.delayed(Duration(seconds: delay));
             } else {
               rethrow;
             }
+          } finally {
+            await partFileSink.close();
+            partClient.close();
           }
         }
       }
 
       await Future.wait(parts.map((i) => downloadPart(i)));
+
+      if (_cancellations[mediaId] == true) return;
+
+      // Combine the downloaded parts into the final file.
+      final finalFile = File(savePath);
+      // Ensure the file is empty before starting the append operations.
+      if (await finalFile.exists()) {
+        await finalFile.delete();
+      }
+
+      for (int i = 0; i < partCount; i++) {
+        if (_cancellations[mediaId] == true) return;
+        final partPath = '${tempDir.path}/$mediaId-part$i.tmp';
+        final partFile = File(partPath);
+        if (await partFile.exists()) {
+          final bytes = await partFile.readAsBytes();
+          // Using FileMode.append is a very safe way to concatenate files,
+          // as it opens, writes, and closes the file handle for each operation.
+          await finalFile.writeAsBytes(bytes, mode: FileMode.append);
+          await partFile.delete();
+        } else {
+          throw Exception('Download part $i is missing.');
+        }
+      }
     } finally {
-      await file.close();
+      // Clean up any remaining temp part files in case of an early error.
+      for (final path in partPaths) {
+        final file = File(path);
+        if (await file.exists()) {
+          await file.delete();
+        }
+      }
     }
   }
 
@@ -381,6 +404,9 @@ class DownloadManager {
       final task = _tasks[mediaId];
       if (task != null && (task.status == DownloadStatus.done || task.status == DownloadStatus.failed)) {
         task.update(newStatus: DownloadStatus.none, newProgress: 0.0);
+        if (_activeTaskNotifier.value == task) {
+          _activeTaskNotifier.value = null;
+        }
       }
     });
   }

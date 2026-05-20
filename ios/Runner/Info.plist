@@ -22,12 +22,32 @@
 	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>app-1-651005734001-ios-0b14a292ddcaf45fcebfd0</string>
+				<string>com.googleusercontent.apps.651005734001-o201k2d26ipl972nasmv0vgjfpkr23uj</string>
+				<string>com.example.cinestream</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>GIDClientID</key>
+	<string>651005734001-o201k2d26ipl972nasmv0vgjfpkr23uj.apps.googleusercontent.com</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>This app needs access to your photo library to save downloaded videos.</string>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -53,8 +73,6 @@
 	<true/>
 	<key>UIFileSharingEnabled</key>
 	<true/>
-	<key>LSSupportsOpeningDocumentsInPlace</key>
-	<true/>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
@@ -72,23 +90,7 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>CFBundleURLTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleTypeRole</key>
-			<string>Editor</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<!-- Firebase Auth Custom URL Scheme (App ID with colons replaced by dashes) -->
-				<string>app-1-651005734001-ios-0b14a292ddcaf45fcebfd0</string>
-				<!-- Google Sign-In Custom URL Scheme (Derived from your Client ID) -->
-				<string>com.googleusercontent.apps.651005734001-o201k2d26ipl972nasmv0vgjfpkr23uj</string>
-				<!-- App Bundle ID -->
-				<string>com.example.cinestream</string>
-			</array>
-		</dict>
-	</array>
-	<key>GIDClientID</key>
-	<string>651005734001-o201k2d26ipl972nasmv0vgjfpkr23uj.apps.googleusercontent.com</string>
+	<key>io.flutter.embedded_views_preview</key>
+	<true/>
 </dict>
 </plist>

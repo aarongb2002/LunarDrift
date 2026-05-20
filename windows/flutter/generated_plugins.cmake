@@ -3,12 +3,14 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  cloud_firestore
+  connectivity_plus
   firebase_auth
   firebase_core
+  flutter_inappwebview_windows
   fullscreen_window
-  permission_handler_windows
+  fvp
   url_launcher_windows
-  video_player_win
   webview_win_floating
 )
 

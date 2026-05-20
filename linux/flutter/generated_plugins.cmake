@@ -4,6 +4,7 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   fullscreen_window
+  fvp
   url_launcher_linux
   webview_win_floating
 )
