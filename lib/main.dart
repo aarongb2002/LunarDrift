@@ -476,7 +476,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'CineStream',
+      title: 'LunarDrift',
       theme: ThemeData(
         scaffoldBackgroundColor: const Color(0xFF0F1014),
         colorScheme: ColorScheme.fromSeed(
@@ -618,7 +618,7 @@ class _LoginPageState extends State<LoginPage> {
             ..statusCode = 200
             ..headers.contentType = ContentType.html
             ..write(
-              '<html><body style="background:#0F1014;color:#1CE783;text-align:center;margin-top:20%;font-family:sans-serif;"><h2>Login successful! You can close this window and return to CineStream.</h2><script>window.close();</script></body></html>',
+              '<html><body style="background:#0F1014;color:#1CE783;text-align:center;margin-top:20%;font-family:sans-serif;"><h2>Login successful! You can close this window and return to LunarDrift.</h2><script>window.close();</script></body></html>',
             );
           await request.response.close();
 
@@ -904,7 +904,7 @@ class _LoginPageState extends State<LoginPage> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Text(
-                'CineStream',
+                'LunarDrift',
                 style: TextStyle(
                   color: Color.fromARGB(255, 82, 82, 82),
                   fontWeight: FontWeight.w900,
@@ -2305,7 +2305,7 @@ class _MyStuffSheetState extends State<MyStuffSheet> {
       }).whereType<CachedDownloadItem>().toList();
 
       final docsDir = await getApplicationDocumentsDirectory();
-      final cineStreamDir = Directory('${docsDir.path}/CineStream/Movies');
+      final cineStreamDir = Directory('${docsDir.path}/LunarDrift/Movies');
 
       List<File> onDiskFiles = [];
       if (await cineStreamDir.exists()) {
@@ -3070,7 +3070,7 @@ class _TMDBHomePageState extends State<TMDBHomePage>
     String appBarTitle = '';
     switch (_selectedIndex) {
       case 0:
-        appBarTitle = 'CineStream';
+        appBarTitle = 'LunarDrift';
         break;
       case 1:
         appBarTitle = 'Movies';
@@ -6889,7 +6889,7 @@ class _MediaDetailsPageState extends State<MediaDetailsPage>
       final title = widget.media['title']?.toString() ?? widget.media['name']?.toString() ?? 'Unknown';
       final docsDir = await getApplicationDocumentsDirectory();
       final finalFileName = '$mediaId+$title.mp4'.replaceAll(RegExp(r'[^\w\s\.-]+'), '').replaceAll(' ', '_');
-      final finalPath = '${docsDir.path}/CineStream/Movies/$finalFileName';
+      final finalPath = '${docsDir.path}/LunarDrift/Movies/$finalFileName';
       final file = File(finalPath);
 
       if (await file.exists()) {

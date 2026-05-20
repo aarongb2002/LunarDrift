@@ -243,7 +243,7 @@ class DownloadManager {
     final task = _tasks[mediaId]!;
 
     final docsDir = await getApplicationDocumentsDirectory();
-    final finalDir = Directory('${docsDir.path}/CineStream/Movies');
+    final finalDir = Directory('${docsDir.path}/LunarDrift/Movies');
     await finalDir.create(recursive: true);
     final finalFileName = '$mediaId+$title.mp4'.replaceAll(RegExp(r'[^\w\s\.-]+'), '').replaceAll(' ', '_');
     final finalPath = '${finalDir.path}/$finalFileName';
