@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'dart:convert';
@@ -224,11 +225,9 @@ class LiveSportsApi {
   Future<void> prefetch() async {
     try {
       final sports = await fetchSports();
-      final matchesResults = await Future.wait(
-        sports.map((s) => fetchMatches(sportSlug: s.slug))
-      );
-      
-      updateCache(sports, matchesResults.expand((m) => m).toList());
+      // PERFORMANCE: Do NOT use Future.wait on dozens of API calls at startup.
+      // This chokes the browser's network queue. We only prefetch the sport list now.
+      updateCache(sports, []); 
       _hasPrefetched = true;
     } catch (e) {
       debugPrint('LiveSportsApi: Prefetch failed: $e');
@@ -427,14 +426,11 @@ class _LiveTVPageState extends State<LiveTVPage> {
     try {
       final sports = await _api.fetchSports();
       
-      // Load matches based on the available sports slivers
-      // We fetch them in parallel for speed, but filter out empty results
-      final matchesResults = await Future.wait(
-        sports.map((s) => _api.fetchMatches(sportSlug: s.slug))
-      );
+      // PERFORMANCE: Instead of fireing parallel requests for every sport,
+      // fetch all available matches for today in a single call.
+      final flatMatches = await _api.fetchMatches(sportSlug: 'all');
 
       if (mounted) {
-        final flatMatches = matchesResults.expand((m) => m).toList();
         _api.updateCache(sports, flatMatches);
 
         setState(() {
@@ -540,7 +536,8 @@ class HorizontalMatchList extends StatelessWidget {
           ),
         ),
         SizedBox(
-          height: 175,
+          
+          height: kIsWeb ? 240 : 175,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 12.0),
@@ -564,24 +561,33 @@ Future<void> handleMatchTap(BuildContext context, Match match) async {
     );
 
     String? streamUrl;
-    if (match.sources.isNotEmpty) {
-      // Default to the second source if available
-      final source = match.sources.length > 1 ? match.sources[1] : match.sources.first;
-      streamUrl = await LiveSportsApi().fetchStreamUrl(
-        source['source']!,
-        source['id']!,
-      );
+    try {
+      if (match.sources.isNotEmpty) {
+        // Default to the second source if available
+        final source = match.sources.length > 1 ? match.sources[1] : match.sources.first;
+        streamUrl = await LiveSportsApi().fetchStreamUrl(
+          source['source']!,
+          source['id']!,
+        );
+      }
+    } catch (e) {
+      debugPrint('Error fetching stream info: $e');
     }
 
     if (context.mounted) {
       Navigator.of(context).pop(); // Dismiss the loading dialog
 
       if (streamUrl != null && streamUrl.isNotEmpty) {
+        // WEB COMPATIBILITY: Force HTTPS to avoid Mixed Content blocks on Web.
+        if (kIsWeb && streamUrl.startsWith('http://')) {
+          streamUrl = streamUrl.replaceFirst('http://', 'https://');
+        }
+
         // Append autoplay parameter if not already present
-        if (!streamUrl.contains('autoplay=')) {
+        if (!streamUrl.contains('autoplay=') && !streamUrl.contains('mute=')) {
           final separator = streamUrl.contains('?') ? '&' : '?';
-          // ignore: unnecessary_brace_in_string_interps
-          streamUrl = '${streamUrl}${separator}autoplay=1';
+          // Mute by default on Web to bypass autoplay restrictions
+          streamUrl = '$streamUrl${separator}autoplay=1${kIsWeb ? '&mute=1' : ''}';
         }
 
         Navigator.push(
@@ -615,12 +621,13 @@ class MatchCard extends StatelessWidget {
     return GestureDetector(
       onTap: () => handleMatchTap(context, match),
       child: Container(
-        width: 250,
-        margin: const EdgeInsets.symmetric(horizontal: 4.0),
+        // Fix: Ensure clean parameter list for width
+        width: kIsWeb ? 350.0 : 250.0,
         decoration: BoxDecoration(
           color: const Color(0xFF1E1F24),
           borderRadius: BorderRadius.circular(8.0),
-          border: Border.all(color: match.isLive ? const Color.fromARGB(255, 255, 255, 255).withValues(alpha: 0.5) : Colors.white24, width: 1),
+          // ignore: deprecated_member_use
+          border: Border.all(color: match.isLive ? const Color.fromARGB(255, 255, 255, 255).withOpacity(0.5) : Colors.white24, width: 1),
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(8.0),
@@ -630,6 +637,7 @@ class MatchCard extends StatelessWidget {
                 Positioned.fill(
                   child: CachedNetworkImage(
                     imageUrl: match.posterUrl,
+                    memCacheWidth: 350,
                     fit: BoxFit.cover,
                     // ignore: deprecated_member_use
                     color: Colors.black.withOpacity(0.7),

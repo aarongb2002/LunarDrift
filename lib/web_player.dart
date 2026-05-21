@@ -9,8 +9,11 @@ void registerWebIframe(String url) {
     ui_web.platformViewRegistry.registerViewFactory(viewId, (int id) {
       return html.IFrameElement()
         ..style.border = 'none'
+        ..style.width = '100%'
+        ..style.height = '100%'
         ..allowFullscreen = true
-        ..src = url;
+        ..src = url
+        ..allow = 'autoplay; fullscreen; picture-in-picture; encrypted-media; accelerometer; gyroscope';
     });
   } catch (e) {
     // Ignore if already registered
