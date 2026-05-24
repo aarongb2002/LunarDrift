@@ -318,9 +318,14 @@ class ProgressManager {
 bool _isGoogleSignInInitialized = false;
 bool _hasShownWebPopup = false;
 
+dynamic _parseJson(String text) => json.decode(text);
+const int _maxCacheSize = 100;
+
 Future<dynamic> fetchWithCache(String url) async {
   if (_apiCache.containsKey(url)) {
-    return _apiCache[url];
+    final val = _apiCache.remove(url);
+    _apiCache[url] = val;
+    return val;
   }
   try {
     final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
@@ -335,8 +340,14 @@ Future<dynamic> fetchWithCache(String url) async {
       }
 
       final String decodedBody = utf8.decode(bytes);
-      final data = json.decode(decodedBody);
+      // PERFORMANCE: Offload JSON decoding to a separate isolate on native platforms
+      // to keep the UI thread responsive during large data processing.
+      final data = (kIsWeb || decodedBody.length < 10000) 
+          ? json.decode(decodedBody) 
+          : await compute(_parseJson, decodedBody);
+
       _apiCache[url] = data;
+      if (_apiCache.length > _maxCacheSize) _apiCache.remove(_apiCache.keys.first);
       return data;
     } else {
       throw Exception('Failed to load data: ${response.statusCode}');
@@ -1038,8 +1049,9 @@ class SearchBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return RepaintBoundary( // Isolate list repaints to prevent full-page redraws on scroll
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(height: kToolbarHeight + MediaQuery.of(context).padding.top),
         Expanded(
@@ -1059,6 +1071,7 @@ class SearchBody extends StatelessWidget {
               : _buildSearchResultsGrid(),
         ),
       ],
+    )
     );
   }
 
@@ -1106,7 +1119,7 @@ class SearchBody extends StatelessWidget {
         final media = results[index];
         final posterPath = media['poster_path'];
         final imageUrl = posterPath != null
-            ? 'https://image.tmdb.org/t/p/w500$posterPath'
+            ? 'https://image.tmdb.org/t/p/w342$posterPath'
             : 'https://via.placeholder.com/500x750?text=No+Image';
         final heroTag =
             'search_${media['media_type']}_${media['id']}_$index';
@@ -1129,6 +1142,7 @@ class SearchBody extends StatelessWidget {
               tag: heroTag,
               child: CachedNetworkImage(
                 imageUrl: imageUrl,
+                memCacheWidth: 342,
                 fit: BoxFit.cover,
                 placeholder: (context, url) =>
                     Container(color: Colors.black26),
@@ -1474,6 +1488,7 @@ class DownloadedItemWidget extends StatelessWidget {
           tag: heroTag,
           child: CachedNetworkImage(
             imageUrl: imageUrl,
+            memCacheWidth: 342,
             fit: BoxFit.cover,
             placeholder: (context, url) => Container(color: Colors.black26),
             errorWidget: (context, url, error) => Container(
@@ -1540,6 +1555,7 @@ class _InProgressDownloadItemWidgetState
         children: [
           CachedNetworkImage(
             imageUrl: imageUrl,
+            memCacheWidth: 135,
             fit: BoxFit.cover,
             placeholder: (context, url) => Container(color: Colors.black26),
             errorWidget: (context, url, error) => Container(
@@ -1792,7 +1808,7 @@ class GridMediaItem extends StatelessWidget {
     }
 
     final imageUrl = posterPath != null
-        ? 'https://image.tmdb.org/t/p/w500$posterPath'
+        ? 'https://image.tmdb.org/t/p/w342$posterPath'
         : 'https://via.placeholder.com/500x750?text=No+Image';
 
     final heroTag = 'grid_list_${listType}_${mediaId}_$index';
@@ -1830,6 +1846,7 @@ class GridMediaItem extends StatelessWidget {
           tag: heroTag,
           child: CachedNetworkImage(
             imageUrl: imageUrl,
+            memCacheWidth: 135,
             fit: BoxFit.cover,
             placeholder: (context, url) => Container(color: Colors.black26),
             errorWidget: (context, url, error) => Container(
@@ -1983,7 +2000,7 @@ class _FullListItemState extends State<FullListItem> {
     }
 
     final imageUrl = posterPath != null
-        ? 'https://image.tmdb.org/t/p/w500$posterPath'
+        ? 'https://image.tmdb.org/t/p/w342$posterPath'
         : 'https://via.placeholder.com/500x750?text=No+Image';
 
     String runtimeStr = '';
@@ -2017,6 +2034,7 @@ class _FullListItemState extends State<FullListItem> {
                   aspectRatio: 2 / 3,
                   child: CachedNetworkImage(
                     imageUrl: imageUrl,
+                    memCacheWidth: 150,
                     fit: BoxFit.cover,
                     placeholder: (context, url) => Container(color: Colors.black26),
                     errorWidget: (context, url, error) => Container(color: Colors.black26, child: const Icon(Icons.movie, color: Colors.white24)),
@@ -3412,19 +3430,12 @@ class SlidingGlassBottomNavBar extends StatelessWidget {
               opacity: showIndicator ? 1.0 : 0.0,
               duration: const Duration(milliseconds: 400),
               curve: Curves.easeInOutCubic,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(indicatorHeight / 2),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 12.0, sigmaY: 12.0),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
-                      borderRadius:
-                          BorderRadius.circular(indicatorHeight / 2),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.2),
-                      ),
-                    ),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(indicatorHeight / 2),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.2),
                   ),
                 ),
               ),
@@ -4457,7 +4468,7 @@ class _FeaturedMediaItemState extends State<FeaturedMediaItem>
     final isMobile = MediaQuery.sizeOf(context).width < 600;
     final media = widget.mediaList[_currentIndex];
     final imageUrl = media['backdrop_path'] != null
-        ? 'https://image.tmdb.org/t/p/original${media['backdrop_path']}'
+        ? 'https://image.tmdb.org/t/p/w1280${media['backdrop_path']}'
         : (media['poster_path'] != null
               ? 'https://image.tmdb.org/t/p/original${media['poster_path']}'
               : 'https://via.placeholder.com/1280x720?text=No+Image');
@@ -4509,7 +4520,9 @@ class _FeaturedMediaItemState extends State<FeaturedMediaItem>
         ? Colors.red
         : _dominantColor;
 
-    return GestureDetector(
+    return RepaintBoundary(
+      child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () {
         _stopTrailerVideo();
         // Explicitly nullify controllers to force re-initialization when returning
@@ -4557,24 +4570,25 @@ class _FeaturedMediaItemState extends State<FeaturedMediaItem>
                 height: 440,
                 width: double.infinity,
                 child: Stack(
+                  clipBehavior: Clip.antiAlias,
                   children: [
                     if (_trailerKey != null && !kIsWeb) // Only show trailer on non-web platforms
                       Positioned.fill( 
                         child: IgnorePointer( // Ignore pointer events to allow interaction with the underlying content
                           child: FittedBox( // Scale the video to cover the available space
                             fit: BoxFit.cover,
-                            child: Transform.scale( // Slightly zoom in the video to hide black bars
+                            child: Transform.scale(
                               scale: 1.35,
-                              child: SizedBox( // Fixed size for the video player
-                                width: 1280, 
+                              child: SizedBox(
+                                width: 1280,
                                 height: 720,
-                                child: _useWebView && _webController != null // Use WebView for Windows/Android/iOS
-                                    ? WebViewWidget(controller: _webController!) 
-                                    : (!_useWebView && _ytController != null // Use YoutubePlayer for other platforms
-                                          ? YoutubePlayer( 
-                                              controller: _ytController!, 
-                                            ) 
-                                          : const SizedBox.shrink()), // Fallback to empty widget
+                                child: _useWebView && _webController != null
+                                    ? WebViewWidget(controller: _webController!)
+                                    : (!_useWebView && _ytController != null
+                                          ? YoutubePlayer(
+                                              controller: _ytController!,
+                                            )
+                                          : const SizedBox.shrink()),
                               ),
                             ),
                           ),
@@ -4584,14 +4598,18 @@ class _FeaturedMediaItemState extends State<FeaturedMediaItem>
                       child: AnimatedSwitcher(
                         duration: const Duration(milliseconds: 500),
                         child: _isVideoPlaying
-                            ? const SizedBox.expand(
-                                key: ValueKey('empty_video_bg'),
+                            ? Container(
+                                key: const ValueKey('empty_video_bg'),
+                                // Use a tiny amount of opacity so the browser doesn't
+                                // pass scroll events through to the iframe.
+                                color: Colors.black.withOpacity(0.01),
                               )
                             : Hero(
                                 key: ValueKey(heroTag),
                                 tag: heroTag,
                                 child: CachedNetworkImage(
                                   imageUrl: imageUrl,
+                                  memCacheWidth: 280,
                                   height: 440,
                                   width: double.infinity,
                                   fit: BoxFit.cover,
@@ -4830,49 +4848,49 @@ class _FeaturedMediaItemState extends State<FeaturedMediaItem>
                                           url,
                                         );
 
-                                        if (isTvShow) {
-                                          final epUrl =
-                                              'https://api.themoviedb.org/3/tv/$mediaId/season/$selectedSeason/episode/$selectedEpisode?api_key=$tmdbApiKey';
-                                          try {
-                                            final epData =
-                                                await fetchWithCache(
-                                                  epUrl,
-                                                );
-                                            if (epData['runtime'] !=
-                                                null) {
-                                              rTime = epData['runtime'];
-                                            } else if (data['episode_run_time']
-                                                    is List &&
-                                                data['episode_run_time']
-                                                    .isNotEmpty) {
-                                              rTime =
-                                                  data['episode_run_time'][0];
-                                            }
-                                          } catch (_) {
-                                            if (data['episode_run_time']
-                                                    is List &&
-                                                data['episode_run_time']
-                                                    .isNotEmpty) {
-                                              rTime =
-                                                  data['episode_run_time'][0];
-                                            }
+                                              if (isTvShow) {
+                                                final epUrl =
+                                                    'https://api.themoviedb.org/3/tv/$mediaId/season/$selectedSeason/episode/$selectedEpisode?api_key=$tmdbApiKey';
+                                                try {
+                                                  final epData =
+                                                      await fetchWithCache(
+                                                        epUrl,
+                                                      );
+                                                  if (epData['runtime'] !=
+                                                      null) {
+                                                    rTime = epData['runtime'];
+                                                  } else if (data['episode_run_time']
+                                                          is List &&
+                                                      data['episode_run_time']
+                                                          .isNotEmpty) {
+                                                    rTime =
+                                                        data['episode_run_time'][0];
+                                                  }
+                                                } catch (_) {
+                                                  if (data['episode_run_time']
+                                                          is List &&
+                                                      data['episode_run_time']
+                                                          .isNotEmpty) {
+                                                    rTime =
+                                                        data['episode_run_time'][0];
+                                                  }
+                                                }
+                                              } else {
+                                                if (data['runtime'] != null) {
+                                                  rTime = data['runtime'];
+                                                }
+                                              }
+                                            } catch (_) {}
+                                            resumeSeconds =
+                                                (rTime * 60 * currentProgress)
+                                                    .toInt();
                                           }
-                                        } else {
-                                          if (data['runtime'] != null) {
-                                            rTime = data['runtime'];
-                                          }
-                                        }
-                                      } catch (_) {}
-                                      resumeSeconds =
-                                          (rTime * 60 * currentProgress)
-                                              .toInt();
-                                    }
-                                    final String progressParam =
-                                        '&progress=$resumeSeconds';
-                                    final String placeholderLink =
-                                        isTvShow
-                                        ? 'https://player.videasy.net/tv/${media['id']}/$selectedSeason/$selectedEpisode?color=1ce783&autoPlay=true&nextEpisode=true&overlay=true$progressParam'
-                                        : 'https://player.videasy.net/movie/${media['id']}?color=1ce783&autoPlay=true&overlay=true$progressParam';
+                                          final String progressParam =
+                                              '&progress=$resumeSeconds';
+                                          final String placeholderLink =
+                                              isTvShow
+                                              ? 'https://player.videasy.net/tv/${media['id']}/$selectedSeason/$selectedEpisode?color=1ce783&autoPlay=true&nextEpisode=true&overlay=true$progressParam'
+                                              : 'https://player.videasy.net/movie/${media['id']}?color=1ce783&autoPlay=true&overlay=true$progressParam';
 
                                     ProgressManager.saveProgress(
                                       media: media,
@@ -5050,6 +5068,7 @@ class _FeaturedMediaItemState extends State<FeaturedMediaItem>
             ),
         ],
       ),
+      )
     );
   }
 }
@@ -5325,6 +5344,7 @@ class _HoverableMediaItemState extends State<HoverableMediaItem> {
                   tag: widget.heroTag,
                   child: CachedNetworkImage(
                     imageUrl: widget.imageUrl,
+                    memCacheWidth: 135,
                     width: 135,
                     fit: BoxFit.cover,
                     placeholder: (context, url) =>
@@ -5538,9 +5558,9 @@ class ContinueWatchingMediaItem extends StatelessWidget {
     final title = media['title'] ?? media['name'] ?? 'Unknown';
     final backdropPath = media['backdrop_path'];
     final imageUrl = backdropPath != null
-        ? 'https://image.tmdb.org/t/p/w500$backdropPath'
+        ? 'https://image.tmdb.org/t/p/w300$backdropPath'
         : (media['poster_path'] != null 
-            ? 'https://image.tmdb.org/t/p/w500${media['poster_path']}'
+            ? 'https://image.tmdb.org/t/p/w342${media['poster_path']}'
             : 'https://via.placeholder.com/500x281?text=No+Image');
 
     final bool isTv = media['media_type'] == 'tv' || media.containsKey('first_air_date');
@@ -5591,6 +5611,7 @@ class ContinueWatchingMediaItem extends StatelessWidget {
                       tag: heroTag,
                       child: CachedNetworkImage(
                         imageUrl: imageUrl,
+            memCacheWidth: 135,
                         fit: BoxFit.cover,
                         placeholder: (context, url) => Container(color: Colors.black26),
                         errorWidget: (context, url, error) => Container(
@@ -5845,7 +5866,7 @@ class _HorizontalMediaListState extends State<HorizontalMediaList> {
                     final mediaType = media['media_type'] ?? (media.containsKey('first_air_date') ? 'tv' : 'movie');
                     final posterPath = media['poster_path'];
                     final imageUrl = posterPath != null
-                        ? 'https://image.tmdb.org/t/p/w500$posterPath'
+                        ? 'https://image.tmdb.org/t/p/w342$posterPath'
                         : 'https://via.placeholder.com/500x750?text=No+Image';
 
                     if (widget.categoryTitle == 'Continue Watching') {
@@ -6006,11 +6027,18 @@ class _MediaCategoryBodyState extends State<MediaCategoryBody>
       final onTheAirUrl =
           'https://api.themoviedb.org/3/tv/on_the_air?api_key=$tmdbApiKey';
 
-      final trendingData = await fetchWithCache(trendingUrl);
-      final genreData = await fetchWithCache(genreUrl);
-      final topRatedData = await fetchWithCache(topRatedUrl);
-      final onTheAirData =
-          widget.mediaType == 'tv' ? await fetchWithCache(onTheAirUrl) : null;
+      // PERFORMANCE: Fetch multiple API resources in parallel to reduce startup latency.
+      final results = await Future.wait([
+        fetchWithCache(trendingUrl),
+        fetchWithCache(genreUrl),
+        fetchWithCache(topRatedUrl),
+        widget.mediaType == 'tv' ? fetchWithCache(onTheAirUrl) : Future.value(null),
+      ]);
+
+      final trendingData = results[0];
+      final genreData = results[1];
+      final topRatedData = results[2];
+      final onTheAirData = results[3];
 
       if (mounted) {
         setState(() {
@@ -7692,7 +7720,7 @@ class _MediaDetailsPageState extends State<MediaDetailsPage>
         .toList();
 
     final backgroundImageUrl = backdropPath != null
-        ? 'https://image.tmdb.org/t/p/original$backdropPath'
+        ? 'https://image.tmdb.org/t/p/w1280$backdropPath'
         : (posterPath != null
               ? 'https://image.tmdb.org/t/p/original$posterPath'
               : 'https://via.placeholder.com/1280x720?text=No+Image');
@@ -8970,7 +8998,7 @@ class _DownloadedMediaDetailsPageState extends State<DownloadedMediaDetailsPage>
     final title = sourceMedia['title']?.toString() ?? sourceMedia['name']?.toString() ?? 'Unknown';
     final backdropPath = sourceMedia['backdrop_path']?.toString();
     final backgroundImageUrl = backdropPath != null
-        ? 'https://image.tmdb.org/t/p/original$backdropPath'
+        ? 'https://image.tmdb.org/t/p/w1280$backdropPath'
         : 'https://via.placeholder.com/1280x720?text=No+Image';
 
     final details = _mediaDetails ?? {};
@@ -9858,6 +9886,7 @@ class _FullscreenTrailerPageState extends State<FullscreenTrailerPage> {
           ),
         ],
       ),
+    
     );
   }
 }
@@ -9913,7 +9942,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       action: ContentBlockerAction(
         type: ContentBlockerActionType.CSS_DISPLAY_NONE,
         // Removed the explicit z-index 2147483647 block to prevent hiding our own UI
-        selector: ".ad, .ads, .ad-container, .overlay, #overlay, [class*='popup'], [id*='popup'], .invisible-overlay",
+        // Loosened: Removed '.overlay' and '#overlay' as they are commonly used by player UIs
+        selector: ".ad, .ads, .ad-container, [class*='popup'], [id*='popup'], .invisible-overlay",
       ),
     ),
     ContentBlocker( // Block third-party images
@@ -9929,7 +9959,16 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   @override
   void initState() {
     super.initState();
-    _currentUrl = widget.videoUrl;
+
+    // Pre-process the URL for Web to ensure registration matches rendering.
+    // This prevents a white screen caused by key mismatch in the platform view registry.
+    String url = widget.videoUrl ?? 'about:blank';
+    if (kIsWeb && url != 'about:blank' && !url.contains('mute=')) {
+      final separator = url.contains('?') ? '&' : '?';
+      // Autoplay + Mute is required for video to play on many browsers without user interaction
+      url = '$url${separator}autoplay=1&mute=1';
+    }
+    _currentUrl = url;
 
     if (!kIsWeb && // Set preferred orientation for mobile
         (defaultTargetPlatform == TargetPlatform.android ||
@@ -9949,8 +9988,13 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
             defaultTargetPlatform == TargetPlatform.iOS);
 
     if (kIsWeb) {
-      
-      registerWebIframe(widget.videoUrl ?? 'about:blank');
+      // On Web, set loading to false immediately as we can't reliably
+      // detect iframe 'load stop' without complex JS Interop.
+      _isLoading = false;
+    }
+
+    if (kIsWeb && _currentUrl != null) {
+      registerWebIframe(_currentUrl!);
       // Show helpful tip for web users
       // Show a helpful tip on the Web since we cannot natively automate the server switch here
       if (!_hasShownWebPopup) {
@@ -10117,7 +10161,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                         ),
                       ),
                 body: kIsWeb
-                    ? buildWebIframe(widget.videoUrl ?? 'about:blank')
+                    ? buildWebIframe(_currentUrl ?? 'about:blank')
                     : isNativeWebView
                     ? InAppWebView(
                         initialUrlRequest: URLRequest(url: WebUri(_currentUrl ?? 'about:blank')),
@@ -10128,7 +10172,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                           allowsInlineMediaPlayback: true,
                           useShouldOverrideUrlLoading: true,
                           contentBlockers: _contentBlockers,
-                          userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                          // Use a more appropriate User-Agent based on the platform to avoid being flagged or blocked
+                          userAgent: kIsWeb ? null : (defaultTargetPlatform == TargetPlatform.iOS ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1' : 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36'),
+                          
                         ),
                         onWebViewCreated: (controller) {
                           _webViewController = controller;
@@ -10180,7 +10226,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                           
                           // Only allow navigation to known trusted domains for streaming and API
                           // This prevents "hijack redirects" where a site sends you to an ad domain
-                          final trustedDomains = ['videasy.net', 'cineby.sc', 'streamed.pk', 'youtube.com', 'google.com', 'gstatic.com'];
+                          final trustedDomains = ['videasy.net', 'cineby.sc', 'streamed.pk', 'youtube.com', 'google.com', 'gstatic.com', 'vidoza.net', 'upstream.to'];
                           final urlString = uri.toString().toLowerCase();
                           bool isTrusted = trustedDomains.any((domain) => uri.host.contains(domain)) || urlString.contains('embed') || urlString.contains('player');
 
