@@ -898,11 +898,13 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       backgroundColor: const Color(0xFF0F1014),
       body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
+        child: SizedBox(
+          width: kIsWeb ? (MediaQuery.sizeOf(context).width * 0.25).clamp(320.0, 450.0) : null,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
               const Text(
                 'LunarDrift',
                 style: TextStyle(
@@ -947,205 +949,71 @@ class _LoginPageState extends State<LoginPage> {
               if (_isLoading)
                 const CircularProgressIndicator(color: Color.fromARGB(255, 255, 255, 255))
               else ...[
-                defaultTargetPlatform == TargetPlatform.iOS
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                          child: Container(
-                            height: 50,
-                            width: double.infinity,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.1),
-                              border: Border.all(
-                                color: Colors.white.withOpacity(0.2),
-                              ),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.transparent,
-                                shadowColor: Colors.transparent,
-                                foregroundColor: const Color.fromARGB(255, 80, 80, 80),
-                              ),
-                              onPressed: () => _authenticate(false),
-                              child: const Text(
-                                'Sign In',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      )
-                    : ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color.fromARGB(255, 156, 156, 156),
-                          foregroundColor: Colors.black,
-                          minimumSize: const Size.fromHeight(50),
-                        ),
-                        onPressed: () => _authenticate(false),
-                        child: const Text(
-                          'Sign In',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color.fromARGB(255, 156, 156, 156),
+                    foregroundColor: Colors.black,
+                    minimumSize: const Size.fromHeight(50),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: () => _authenticate(false),
+                  child: const Text('Sign In', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                ),
                 const SizedBox(height: 16),
                 TextButton(
                   onPressed: () => _authenticate(true),
-                  child: const Text(
-                    'Create Account',
-                    style: TextStyle(color: Color.fromARGB(255, 255, 255, 255)),
-                  ),
+                  child: const Text('Create Account', style: TextStyle(color: Colors.white)),
+                  
                 ),
                 const SizedBox(height: 24),
-                const Row(
+                Row(
                   children: [
-                    Expanded(child: Divider(color: Colors.white24)),
-                    Padding(
+                    const Expanded(child: Divider(color: Colors.white24)),
+                    const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: Text(
-                        'OR',
-                        style: TextStyle(color: Colors.white54),
-                      ),
+                      child: Text('OR', style: TextStyle(color: Colors.white54)),
                     ),
-                    Expanded(child: Divider(color: Colors.white24)),
+                    const Expanded(child: Divider(color: Colors.white24)),
                   ],
                 ),
                 const SizedBox(height: 24),
-                defaultTargetPlatform == TargetPlatform.iOS
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                          child: Container(
-                            height: 50,
-                            width: double.infinity,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.05),
-                              border: Border.all(
-                                color: Colors.white.withOpacity(0.15),
-                              ),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.white,
-                                side: BorderSide.none,
-                              ),
-                              onPressed: _signInWithGoogle,
-                              icon: Image.network(
-                                'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/48px-Google_%22G%22_logo.svg.png',
-                                height: 24,
-                                errorBuilder: (context, error, stackTrace) =>
-                                    const Icon(Icons.account_circle, size: 24),
-                              ),
-                              label: const Text(
-                                'Sign in with Google',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      )
-                    : OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          minimumSize: const Size.fromHeight(50),
-                          side: const BorderSide(color: Colors.white54),
-                        ),
-                        onPressed: _signInWithGoogle,
-                        icon: Image.network(
-                          'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/48px-Google_%22G%22_logo.svg.png',
-                          height: 24,
-                          errorBuilder: (context, error, stackTrace) =>
-                              const Icon(Icons.account_circle, size: 24),
-                        ),
-                        label: const Text(
-                          'Sign in with Google',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size.fromHeight(50),
+                    side: const BorderSide(color: Colors.white54),
+                  ),
+                  onPressed: _signInWithGoogle,
+                  icon: Image.network(
+                    'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/48px-Google_%22G%22_logo.svg.png',
+                    height: 24,
+                  ),
+                  label: const Text('Sign in with Google', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                ),
                 if (kIsWeb ||
                     (defaultTargetPlatform != TargetPlatform.windows &&
                         defaultTargetPlatform != TargetPlatform.linux)) ...[
                   const SizedBox(height: 16),
-                  defaultTargetPlatform == TargetPlatform.iOS
-                      ? ClipRRect(
-                          borderRadius: BorderRadius.circular(16),
-                          child: BackdropFilter(
-                            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                            child: Container(
-                              height: 50,
-                              width: double.infinity,
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.05),
-                                border: Border.all(
-                                  color: Colors.white.withOpacity(0.15),
-                                ),
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: OutlinedButton.icon(
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.white,
-                                  side: BorderSide.none,
-                                ),
-                                onPressed: _signInWithMicrosoft,
-                                icon: Image.network(
-                                  'https://upload.wikimedia.org/wikipedia/commons/thumb/4/44/Microsoft_logo.svg/48px-Microsoft_logo.svg.png',
-                                  height: 24,
-                                  errorBuilder: (context, error, stackTrace) =>
-                                      const Icon(Icons.window, size: 24),
-                                ),
-                                label: const Text(
-                                  'Sign in with Microsoft',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        )
-                      : OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.white,
-                            minimumSize: const Size.fromHeight(50),
-                            side: const BorderSide(color: Colors.white54),
-                          ),
-                          onPressed: _signInWithMicrosoft,
-                          icon: Image.network(
-                            'https://upload.wikimedia.org/wikipedia/commons/thumb/4/44/Microsoft_logo.svg/48px-Microsoft_logo.svg.png',
-                            height: 24,
-                            errorBuilder: (context, error, stackTrace) =>
-                                const Icon(Icons.window, size: 24),
-                          ),
-                          label: const Text(
-                            'Sign in with Microsoft',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                        ),
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(50),
+                      side: const BorderSide(color: Colors.white54),
+                    ),
+                    onPressed: _signInWithMicrosoft,
+                    icon: Image.network(
+                      'https://upload.wikimedia.org/wikipedia/commons/thumb/4/44/Microsoft_logo.svg/48px-Microsoft_logo.svg.png',
+                      height: 24,
+                    ),
+                    label: const Text('Sign in with Microsoft', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    ),
+                  ],
                 ],
               ],
-            ],
+            ),
           ),
         ),
-      ),
+      )
     );
   }
 }
@@ -3057,6 +2925,7 @@ class _TMDBHomePageState extends State<TMDBHomePage>
     final keyboardAnimationProgress =
         (_maxKeyboardHeight > 0 ? (keyboardHeight / _maxKeyboardHeight) : 0.0)
             .clamp(0.0, 1.0);
+    final double screenWidth = MediaQuery.of(context).size.width;
     ImageProvider? profileImage;
     if (user?.photoURL != null) {
       if (user!.photoURL!.startsWith('data:image')) {
@@ -3232,6 +3101,7 @@ class _TMDBHomePageState extends State<TMDBHomePage>
                               FeaturedMediaItem(
                                 mediaList: mediaList.take(5).toList(),
                                 isMuted: _isMuted,
+                                onRefresh: _refreshAllHomePageData,
                               ),
                             // This is where the FeaturedMediaItem is built.
                             // Its onTap navigates to MediaDetailsPage.
@@ -3323,170 +3193,160 @@ class _TMDBHomePageState extends State<TMDBHomePage>
               : const SizedBox.shrink(key: ValueKey('empty')),
         ),
       ),
-      bottomNavigationBar: Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-        child: defaultTargetPlatform == TargetPlatform.iOS
-            ? LayoutBuilder(builder: (context, constraints) {
-                final safeAreaHorizontalPadding =
-                    MediaQuery.of(context).padding.left +
-                        MediaQuery.of(context).padding.right;
-                final containerMargin = 16.0 * 2;
-                final availableWidth =
-                    constraints.maxWidth - safeAreaHorizontalPadding - containerMargin;
-
-                final searchIconWidth = 56.0;
-                final spacing = 12.0;
-                final homeIconWidth = 56.0;
-                final closeButtonWidth = 56.0;
-
-                final expandedNavBarWidth = availableWidth - searchIconWidth - spacing;
-                final collapsedNavBarWidth = homeIconWidth;
-
-                final searchBarLeft = collapsedNavBarWidth + spacing;
-
-                return Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 16.0)
-                      .copyWith(bottom: 16.0),
+      bottomNavigationBar: (kIsWeb || (defaultTargetPlatform == TargetPlatform.windows))
+          ? Padding(
+              padding: const EdgeInsets.only(left: 16.0, bottom: 24.0),
+              child: Align(
+                alignment: Alignment.bottomLeft,
+                child: SizedBox(
                   height: 56,
-                  child: Stack(
-                    alignment: Alignment.centerLeft,
-                    children: [
-                      // Main Nav Bar
-                      AnimatedPositioned(
-                        duration: const Duration(milliseconds: 400),
-                        curve: Curves.easeInOutCubic,
-                        left: 0,
-                        width: _isSearchActive
-                            ? collapsedNavBarWidth
-                            : expandedNavBarWidth,
-                        height: 56,
-                        child: Transform.scale(
-                          scale: 1.0 - keyboardAnimationProgress,
-                          alignment: Alignment.centerLeft,
-                          child: _buildNavBarContainer(
-                            isCircle: _isSearchActive,
-                            child: SlidingGlassBottomNavBar(
-                              showIndicator: !_isSearchActive,
-                              selectedIndex: _isSearchActive ? 0 : _selectedIndex,
-                              onTap: (index) {
-                                if (index == 0 && _isSearchActive) {
-                                  setState(() {
-                                    _isSearchActive = false;
-                                    _selectedIndex = 0;
-                                    _searchController.clear();
-                                    _onSearchChanged('');
-                                  });
-                                } else {
-                                  setState(() {
-                                    _isSearchActive = false;
-                                    _selectedIndex = index;
-                                  });
-                                }
-                              },
-                              isSearchActive: _isSearchActive,
-                              expandedWidth: expandedNavBarWidth - 2.0,
-                              collapsedWidth: collapsedNavBarWidth - 2.0,
-                              itemValues: const [0, 1, 2, 4],
-                              items: const [
-                                BottomNavigationBarItem(
-                                    icon: Icon(Icons.home), label: 'Home'),
-                                BottomNavigationBarItem(
-                                    icon: Icon(Icons.movie), label: 'Movies'),
-                                BottomNavigationBarItem(
-                                    icon: Icon(Icons.tv), label: 'TV Shows'),
-                                BottomNavigationBarItem(icon: Icon(Icons.sports_basketball),
-                                    label: 'Sports'),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      // Search component
-                      TweenAnimationBuilder<double>(
-                        tween: Tween<double>(
-                            begin: 0.0, end: _isSearchActive ? 1.0 : 0.0),
-                        duration: const Duration(milliseconds: 400),
-                        curve: Curves.easeInOutCubic,
-                        builder: (context, searchAnimationValue, child) {
-                          // Animate the search bar sliding in/out when search is activated/deactivated
-                          final searchBarLeftOnSearch = lerpDouble(
-                              expandedNavBarWidth + spacing,
-                              searchBarLeft,
-                              searchAnimationValue);
-
-                          // Further animate the position based on the keyboard's visibility
-                          final searchBarLeftCurrent = lerpDouble(
-                              searchBarLeftOnSearch,
-                              0,
-                              keyboardAnimationProgress);
-                          final searchBarRightCurrent = lerpDouble(0.0,
-                              closeButtonWidth + spacing, keyboardAnimationProgress);
-
-                          return Positioned(
-                            left: searchBarLeftCurrent,
-                            right: searchBarRightCurrent,
-                            height: 56,
-                            child: child!,
-                          );
-                        },
-                        child: AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 200),
-                            child: _isSearchActive
-                                ? _buildSearchBar()
-                                : _buildSearchIcon()),
-                      ),
-                      // Close Keyboard Button
-                      Positioned(
-                        right: 0,
-                        width: closeButtonWidth,
-                        height: 56,
-                        child: Transform.scale(
-                          scale: keyboardAnimationProgress,
-                          alignment: Alignment.centerRight,
-                          child: _buildCloseKeyboardIcon(),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              })
-            : Container(
-                color: const Color(0xFF0F1014),
-                child: SafeArea(
-                  top: false,
-                  child: SizedBox(
-                    height: 60,
-                    child: LayoutBuilder(builder: (context, constraints) {
-                      return SlidingGlassBottomNavBar(
-                        selectedIndex: _selectedIndex,
-                        onTap: (index) => setState(() => _selectedIndex = index),
-                        expandedWidth: constraints.maxWidth,
-                        collapsedWidth: constraints.maxWidth,
-                        items: const [
-                          BottomNavigationBarItem(
-                            icon: Icon(Icons.home),
-                            label: 'Home',
-                          ),
-                          BottomNavigationBarItem(
-                            icon: Icon(Icons.movie),
-                            label: 'Movies',
-                          ),
-                           BottomNavigationBarItem(
-                            icon: Icon(Icons.tv),
-                            label: 'TV Shows',
-                          ),
-                           BottomNavigationBarItem(
-                            icon: Icon(Icons.sports_basketball),
-                            label: 'Sports',
-                          ),
-                        ],
-                        itemValues: const [0, 1, 2, 4],
-                      );
-                    }),
+                  width: 250.0,
+                  child: _buildNavBarContainer(
+                    child: SlidingGlassBottomNavBar(
+                      selectedIndex: _selectedIndex,
+                      onTap: (index) => setState(() => _selectedIndex = index),
+                      expandedWidth: 250.0,
+                      collapsedWidth: 250.0,
+                      items: const [
+                        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+                        BottomNavigationBarItem(icon: Icon(Icons.movie), label: 'Movies'),
+                        BottomNavigationBarItem(icon: Icon(Icons.tv), label: 'TV Shows'),
+                        BottomNavigationBarItem(icon: Icon(Icons.sports_basketball), label: 'Sports'),
+                      ],
+                      itemValues: const [0, 1, 2, 4],
+                    ),
                   ),
                 ),
               ),
+            )
+          : (defaultTargetPlatform == TargetPlatform.iOS)
+              ? Padding(
+                  padding: EdgeInsets.only(bottom: keyboardHeight),
+                  child: LayoutBuilder(builder: (context, constraints) {
+                    return _buildIOSBottomBar(constraints, keyboardAnimationProgress);
+                  }),
+                )
+              : Container(
+                  color: const Color(0xFF0F1014),
+                  child: SafeArea(
+                    top: false,
+                    child: SizedBox(
+                      height: 60,
+                      width: screenWidth,
+                      child: SlidingGlassBottomNavBar(
+                        selectedIndex: _selectedIndex,
+                        onTap: (index) => setState(() => _selectedIndex = index),
+                        expandedWidth: screenWidth,
+                        collapsedWidth: screenWidth,
+                        items: const [
+                          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+                          BottomNavigationBarItem(icon: Icon(Icons.movie), label: 'Movies'),
+                          BottomNavigationBarItem(icon: Icon(Icons.tv), label: 'TV Shows'),
+                          BottomNavigationBarItem(icon: Icon(Icons.sports_basketball), label: 'Sports'),
+                        ],
+                        itemValues: const [0, 1, 2, 4],
+                      ),
+                    ),
+                  ),
+                ),
+    );
+  }
+
+  // Helper for iOS bar to keep the main build method clean
+  Widget _buildIOSBottomBar(BoxConstraints constraints, double keyboardAnimationProgress) {
+    final safeAreaHorizontalPadding = MediaQuery.of(context).padding.left + MediaQuery.of(context).padding.right;
+    final containerMargin = 16.0 * 2;
+    final availableWidth = constraints.maxWidth - safeAreaHorizontalPadding - containerMargin;
+
+    const searchIconWidth = 56.0;
+    const spacing = 12.0;
+    const homeIconWidth = 56.0;
+    const closeButtonWidth = 56.0;
+
+    final expandedNavBarWidth = availableWidth - searchIconWidth - spacing;
+    final collapsedNavBarWidth = homeIconWidth;
+    final searchBarLeft = collapsedNavBarWidth + spacing;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16.0).copyWith(bottom: 16.0),
+      height: 56,
+      child: Stack(
+        alignment: Alignment.centerLeft,
+        children: [
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 400),
+            curve: Curves.easeInOutCubic,
+            left: 0,
+            width: _isSearchActive ? collapsedNavBarWidth : expandedNavBarWidth,
+            height: 56,
+            child: Transform.scale(
+              scale: 1.0 - keyboardAnimationProgress,
+              alignment: Alignment.centerLeft,
+              child: _buildNavBarContainer(
+                isCircle: _isSearchActive,
+                child: SlidingGlassBottomNavBar(
+                  showIndicator: !_isSearchActive,
+                  selectedIndex: _isSearchActive ? 0 : _selectedIndex,
+                  onTap: (index) {
+                    if (index == 0 && _isSearchActive) {
+                      setState(() {
+                        _isSearchActive = false;
+                        _selectedIndex = 0;
+                        _searchController.clear();
+                        _onSearchChanged('');
+                      });
+                    } else {
+                      setState(() {
+                        _isSearchActive = false;
+                        _selectedIndex = index;
+                      });
+                    }
+                  },
+                  isSearchActive: _isSearchActive,
+                  expandedWidth: expandedNavBarWidth - 2.0,
+                  collapsedWidth: collapsedNavBarWidth - 2.0,
+                  itemValues: const [0, 1, 2, 4],
+                  items: const [
+                    BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+                    BottomNavigationBarItem(icon: Icon(Icons.movie), label: 'Movies'),
+                    BottomNavigationBarItem(icon: Icon(Icons.tv), label: 'TV Shows'),
+                    BottomNavigationBarItem(icon: Icon(Icons.sports_basketball), label: 'Sports'),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          TweenAnimationBuilder<double>(
+            tween: Tween<double>(begin: 0.0, end: _isSearchActive ? 1.0 : 0.0),
+            duration: const Duration(milliseconds: 400),
+            curve: Curves.easeInOutCubic,
+            builder: (context, searchAnimationValue, child) {
+              final searchBarLeftOnSearch = lerpDouble(expandedNavBarWidth + spacing, searchBarLeft, searchAnimationValue);
+              final searchBarLeftCurrent = lerpDouble(searchBarLeftOnSearch, 0, keyboardAnimationProgress);
+              final searchBarRightCurrent = lerpDouble(0.0, closeButtonWidth + spacing, keyboardAnimationProgress);
+
+              return Positioned(
+                left: searchBarLeftCurrent,
+                right: searchBarRightCurrent,
+                height: 56,
+                child: child!,
+              );
+            },
+            child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                child: _isSearchActive ? _buildSearchBar() : _buildSearchIcon()),
+          ),
+          Positioned(
+            right: 0,
+            width: closeButtonWidth,
+            height: 56,
+            child: Transform.scale(
+              scale: keyboardAnimationProgress,
+              alignment: Alignment.centerRight,
+              child: _buildCloseKeyboardIcon(),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -3922,11 +3782,13 @@ class SettingsPage extends StatelessWidget {
 class FeaturedMediaItem extends StatefulWidget {
   final List<dynamic> mediaList;
   final bool isMuted;
+  final VoidCallback? onRefresh;
 
   const FeaturedMediaItem({
     super.key,
     required this.mediaList,
     this.isMuted = true,
+    this.onRefresh,
   });
 
   @override
@@ -4696,23 +4558,23 @@ class _FeaturedMediaItemState extends State<FeaturedMediaItem>
                 width: double.infinity,
                 child: Stack(
                   children: [
-                    if (_trailerKey != null)
-                      Positioned.fill(
-                        child: IgnorePointer(
-                          child: FittedBox(
+                    if (_trailerKey != null && !kIsWeb) // Only show trailer on non-web platforms
+                      Positioned.fill( 
+                        child: IgnorePointer( // Ignore pointer events to allow interaction with the underlying content
+                          child: FittedBox( // Scale the video to cover the available space
                             fit: BoxFit.cover,
-                            child: Transform.scale(
+                            child: Transform.scale( // Slightly zoom in the video to hide black bars
                               scale: 1.35,
-                              child: SizedBox(
-                                width: 1280,
+                              child: SizedBox( // Fixed size for the video player
+                                width: 1280, 
                                 height: 720,
-                                child: _useWebView && _webController != null
-                                    ? WebViewWidget(controller: _webController!)
-                                    : (!_useWebView && _ytController != null
-                                          ? YoutubePlayer(
-                                              controller: _ytController!,
-                                            )
-                                          : const SizedBox.shrink()),
+                                child: _useWebView && _webController != null // Use WebView for Windows/Android/iOS
+                                    ? WebViewWidget(controller: _webController!) 
+                                    : (!_useWebView && _ytController != null // Use YoutubePlayer for other platforms
+                                          ? YoutubePlayer( 
+                                              controller: _ytController!, 
+                                            ) 
+                                          : const SizedBox.shrink()), // Fallback to empty widget
                               ),
                             ),
                           ),
@@ -4733,6 +4595,7 @@ class _FeaturedMediaItemState extends State<FeaturedMediaItem>
                                   height: 440,
                                   width: double.infinity,
                                   fit: BoxFit.cover,
+                                  alignment: Alignment.bottomCenter,
                                   placeholder: (context, url) => Container(
                                     height: 440,
                                     color: Colors.black26,
@@ -4921,161 +4784,34 @@ class _FeaturedMediaItemState extends State<FeaturedMediaItem>
                       children: [
                         Expanded(
                           flex: 3,
-                          child: defaultTargetPlatform == TargetPlatform.iOS
-                              ? ClipRRect(
-                                  borderRadius: BorderRadius.circular(16),
-                                  child: BackdropFilter(
-                                    filter: ImageFilter.blur(
-                                      sigmaX: 20,
-                                      sigmaY: 20,
-                                    ),
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        color: btnBaseColor != null
-                                            ? btnBaseColor.withOpacity(0.15)
-                                            : Colors.white.withOpacity(0.15),
-                                        border: Border.all(
-                                          color: btnBaseColor != null
-                                              ? btnBaseColor.withOpacity(0.3)
-                                              : Colors.white.withOpacity(0.3),
-                                        ),
-                                        borderRadius: BorderRadius.circular(16),
-                                      ),
-                                      child: ElevatedButton.icon(
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: Colors.transparent,
-                                          shadowColor: Colors.transparent,
-                                          foregroundColor:
-                                              btnBaseColor ?? Colors.white,
-                                          padding: const EdgeInsets.symmetric(
-                                            vertical: 12,
-                                          ),
-                                        ),
-                                        onPressed: () async {
-                                          _stopTrailerVideo();
-                                          int resumeSeconds = 0;
-                                          if (currentProgress > 0 &&
-                                              currentProgress < 1.0) {
-                                            int rTime = isTvShow ? 45 : 120;
-                                            try {
-                                              final mediaId = media['id'];
-                                              final mediaType = isTvShow
-                                                  ? 'tv'
-                                                  : 'movie';
-                                              final url =
-                                                  'https://api.themoviedb.org/3/$mediaType/$mediaId?api_key=$tmdbApiKey';
-                                              final data = await fetchWithCache(
-                                                url,
-                                              );
-
-                                              if (isTvShow) {
-                                                final epUrl =
-                                                    'https://api.themoviedb.org/3/tv/$mediaId/season/$selectedSeason/episode/$selectedEpisode?api_key=$tmdbApiKey';
-                                                try {
-                                                  final epData =
-                                                      await fetchWithCache(
-                                                        epUrl,
-                                                      );
-                                                  if (epData['runtime'] !=
-                                                      null) {
-                                                    rTime = epData['runtime'];
-                                                  } else if (data['episode_run_time']
-                                                          is List &&
-                                                      data['episode_run_time']
-                                                          .isNotEmpty) {
-                                                    rTime =
-                                                        data['episode_run_time'][0];
-                                                  }
-                                                } catch (_) {
-                                                  if (data['episode_run_time']
-                                                          is List &&
-                                                      data['episode_run_time']
-                                                          .isNotEmpty) {
-                                                    rTime =
-                                                        data['episode_run_time'][0];
-                                                  }
-                                                }
-                                              } else {
-                                                if (data['runtime'] != null) {
-                                                  rTime = data['runtime'];
-                                                }
-                                              }
-                                            } catch (_) {}
-                                            resumeSeconds =
-                                                (rTime * 60 * currentProgress)
-                                                    .toInt();
-                                          }
-                                          final String progressParam =
-                                              '&progress=$resumeSeconds';
-                                          final String placeholderLink =
-                                              isTvShow
-                                              ? 'https://player.videasy.net/tv/${media['id']}/$selectedSeason/$selectedEpisode?color=1ce783&autoPlay=true&nextEpisode=true&overlay=true$progressParam'
-                                              : 'https://player.videasy.net/movie/${media['id']}?color=1ce783&autoPlay=true&overlay=true$progressParam';
-
-                                          ProgressManager.saveProgress(
-                                            media: media,
-                                            progress: currentProgress == 0 ? 0.05 : currentProgress,
-                                            season: isTvShow ? selectedSeason : null,
-                                            episode: isTvShow ? selectedEpisode : null,
-                                            position: resumeSeconds,
-                                          );
-
-                                          if (!context.mounted) return;
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (context) =>
-                                                  VideoPlayerPage(
-                                                    videoUrl: placeholderLink,
-                                                    media: media,
-                                                    season: isTvShow ? selectedSeason : null,
-                                                    episode: isTvShow ? selectedEpisode : null,
-                                                  ),
-                                            ),
-                                          ).then((_) {
-                                            if (mounted) {
-                                              setState(() {
-                                                _isVideoPlaying = false;
-                                                _showContent = false;
-                                              });
-                                              _progressController.reset();
-                                              _fetchLogo();
-                                            }
-                                          });
-                                        },
-                                        icon: const Icon(
-                                          Icons.play_arrow,
-                                          size: 24,
-                                        ),
-                                        label: FittedBox(
-                                          fit: BoxFit.scaleDown,
-                                          child: Text(
-                                            playButtonText,
-                                            style: const TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(
+                                sigmaX: 20,
+                                sigmaY: 20,
+                              ),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: btnBaseColor != null
+                                      ? btnBaseColor.withOpacity(0.15)
+                                      : Colors.white.withOpacity(0.15),
+                                  border: Border.all(
+                                    color: btnBaseColor != null
+                                        ? btnBaseColor.withOpacity(0.3)
+                                        : Colors.white.withOpacity(0.3),
                                   ),
-                                )
-                                : ElevatedButton(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: ElevatedButton.icon(
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor:
-                                        btnBaseColor ?? Colors.white,
+                                    backgroundColor: Colors.transparent,
+                                    shadowColor: Colors.transparent,
                                     foregroundColor:
-                                        (!isTvShow && _isCamRelease) || btnBaseColor == null
-                                        ? Colors.white
-                                        : (btnBaseColor.computeLuminance() <
-                                                  0.5
-                                              ? Colors.white
-                                              : Colors.black),
+                                        btnBaseColor ?? Colors.white,
                                     padding: const EdgeInsets.symmetric(
                                       vertical: 12,
                                     ),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4.0)),
                                   ),
                                   onPressed: () async {
                                     _stopTrailerVideo();
@@ -5090,16 +4826,20 @@ class _FeaturedMediaItemState extends State<FeaturedMediaItem>
                                             : 'movie';
                                         final url =
                                             'https://api.themoviedb.org/3/$mediaType/$mediaId?api_key=$tmdbApiKey';
-                                        final data = await fetchWithCache(url);
+                                        final data = await fetchWithCache(
+                                          url,
+                                        );
 
                                         if (isTvShow) {
                                           final epUrl =
                                               'https://api.themoviedb.org/3/tv/$mediaId/season/$selectedSeason/episode/$selectedEpisode?api_key=$tmdbApiKey';
                                           try {
-                                            final epData = await fetchWithCache(
-                                              epUrl,
-                                            );
-                                            if (epData['runtime'] != null) {
+                                            final epData =
+                                                await fetchWithCache(
+                                                  epUrl,
+                                                );
+                                            if (epData['runtime'] !=
+                                                null) {
                                               rTime = epData['runtime'];
                                             } else if (data['episode_run_time']
                                                     is List &&
@@ -5129,7 +4869,8 @@ class _FeaturedMediaItemState extends State<FeaturedMediaItem>
                                     }
                                     final String progressParam =
                                         '&progress=$resumeSeconds';
-                                    final String placeholderLink = isTvShow
+                                    final String placeholderLink =
+                                        isTvShow
                                         ? 'https://player.videasy.net/tv/${media['id']}/$selectedSeason/$selectedEpisode?color=1ce783&autoPlay=true&nextEpisode=true&overlay=true$progressParam'
                                         : 'https://player.videasy.net/movie/${media['id']}?color=1ce783&autoPlay=true&overlay=true$progressParam';
 
@@ -5145,75 +4886,14 @@ class _FeaturedMediaItemState extends State<FeaturedMediaItem>
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
-                                        builder: (context) => VideoPlayerPage(
-                                          videoUrl: placeholderLink,
-                                          media: media,
-                                          season: isTvShow ? selectedSeason : null,
-                                          episode: isTvShow ? selectedEpisode : null,
-                                        ),
-                                      ),
-                                    ).then((_) {
-                                      if (mounted) {
-                                        setState(() {
-                                          _isVideoPlaying = false;
-                                          _showContent = false;
-                                        });
-                                        _progressController.reset();
-                                        _fetchLogo();
-                                      }
-                                    });
-                                  },
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(Icons.play_arrow, size: 24),
-                                      const SizedBox(width: 8),
-                                      Text(playButtonText,
-                                          style: const TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold)),
-                                    ],
-                                  ), 
-                                ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          flex: 3,
-                          child: defaultTargetPlatform == TargetPlatform.iOS
-                              ? ClipRRect(
-                                  borderRadius: BorderRadius.circular(16),
-                                  child: BackdropFilter(
-                                    filter: ImageFilter.blur(
-                                      sigmaX: 20,
-                                      sigmaY: 20,
-                                    ),
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        color: Colors.white.withOpacity(0.05),
-                                        border: Border.all(
-                                          color: Colors.white.withOpacity(0.15),
-                                        ),
-                                        borderRadius: BorderRadius.circular(16),
-                                      ),
-                                      child: OutlinedButton.icon(
-                                        style: OutlinedButton.styleFrom(
-                                          foregroundColor: Colors.white,
-                                          padding: const EdgeInsets.symmetric(
-                                            vertical: 12,
-                                          ),
-                                          side: BorderSide.none,
-                                        ),
-                                        onPressed: () {
-                                          _stopTrailerVideo();
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (context) =>
-                                                  MediaDetailsPage(
-                                                    media: media,
-                                                    heroTag: heroTag,
-                                                  ),
+                                        builder: (context) =>
+                                            VideoPlayerPage(
+                                              videoUrl: placeholderLink,
+                                              media: media,
+                                              season: isTvShow ? selectedSeason : null,
+                                              episode: isTvShow ? selectedEpisode : null,
                                             ),
+                                      ),
                                           ).then((_) {
                                             if (mounted) {
                                               setState(() {
@@ -5222,47 +4902,65 @@ class _FeaturedMediaItemState extends State<FeaturedMediaItem>
                                               });
                                               _progressController.reset();
                                               _fetchLogo();
-                                            }
-                                          });
-                                        },
-                                        icon: const Icon(Icons.list, size: 24),
-                                        label: const FittedBox(
-                                          fit: BoxFit.scaleDown,
-                                          child: Text(
-                                            'Details',
-                                            style: TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ),
+                                              widget.onRefresh?.call();
+                                      }
+                                    });
+                                  },
+                                  icon: const Icon(
+                                    Icons.play_arrow,
+                                    size: 24,
+                                  ),
+                                  label: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      playButtonText,
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
                                       ),
                                     ),
                                   ),
-                                )
-                              : OutlinedButton.icon(
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 3,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(
+                                sigmaX: 20,
+                                sigmaY: 20,
+                              ),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.05),
+                                  border: Border.all(
+                                    color: Colors.white.withOpacity(0.15),
+                                  ),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: OutlinedButton.icon(
                                   style: OutlinedButton.styleFrom(
                                     foregroundColor: Colors.white,
                                     padding: const EdgeInsets.symmetric(
                                       vertical: 12,
                                     ),
-                                    side: const BorderSide(
-                                      color: Colors.white54,
-                                      width: 2,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(4.0),
-                                    ),
+                                    side: BorderSide.none,
                                   ),
                                   onPressed: () {
                                     _stopTrailerVideo();
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
-                                        builder: (context) => MediaDetailsPage(
-                                          media: media,
-                                          heroTag: heroTag,
-                                        ),
+                                        builder: (context) =>
+                                            MediaDetailsPage(
+                                              media: media,
+                                              heroTag: heroTag,
+                                            ),
                                       ),
                                     ).then((_) {
                                       if (mounted) {
@@ -5272,6 +4970,7 @@ class _FeaturedMediaItemState extends State<FeaturedMediaItem>
                                         });
                                         _progressController.reset();
                                         _fetchLogo();
+                                        widget.onRefresh?.call();
                                       }
                                     });
                                   },
@@ -5287,6 +4986,9 @@ class _FeaturedMediaItemState extends State<FeaturedMediaItem>
                                     ),
                                   ),
                                 ),
+                              ),
+                            ),
+                          ),
                         ),
                         if (!isMobile) const Spacer(flex: 4),
                       ],
@@ -6413,6 +6115,7 @@ class _MediaCategoryBodyState extends State<MediaCategoryBody>
             FeaturedMediaItem(
               mediaList: trendingList.take(5).toList(),
               isMuted: widget.isMuted,
+              onRefresh: fetchData,
             ),
           const SizedBox(height: 20),
           HorizontalMediaList(
@@ -7397,163 +7100,94 @@ class _MediaDetailsPageState extends State<MediaDetailsPage>
     final String colorHex = _dominantColor != null
         ? (_dominantColor!.value & 0xFFFFFF).toRadixString(16).padLeft(6, '0')
         : '1ce783';
-    return defaultTargetPlatform == TargetPlatform.iOS
-        ? ClipRRect(
-            borderRadius: BorderRadius.circular(
-              16,
-            ),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(
-                sigmaX: 20,
-                sigmaY: 20,
+    final Color? playBtnColor = (!isTvShow && _isCamRelease) ? Colors.red : _dominantColor;
+    return ClipRRect(
+        borderRadius: BorderRadius.circular(
+          16,
+        ),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(
+            sigmaX: 20,
+            sigmaY: 20,
+          ),
+          child: Container(
+            decoration: BoxDecoration(
+              color: playBtnColor != null
+                  ? playBtnColor.withOpacity(0.15)
+                  : Colors.white.withOpacity(0.15),
+              border: Border.all(
+                color: playBtnColor != null
+                    ? playBtnColor.withOpacity(0.3)
+                    : Colors.white.withOpacity(0.3),
               ),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: _dominantColor != null
-                      ? _dominantColor!.withOpacity(0.15)
-                      : Colors.white.withOpacity(0.15),
-                  border: Border.all(
-                    color: _dominantColor != null
-                        ? _dominantColor!.withOpacity(0.3)
-                        : Colors.white.withOpacity(0.3),
-                  ),
-                  borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                foregroundColor: playBtnColor ?? Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  vertical: 12,
                 ),
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    shadowColor: Colors.transparent,
-                    foregroundColor: _dominantColor ?? Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 12,
-                    ),
-                  ),
-                  onPressed: () {
-                    final String progressParam = '&progress=$mainResumeSeconds';
-                    final String placeholderLink = isTvShow
-                        ? 'https://player.videasy.net/tv/${widget.media['id']}/$_selectedSeason/$_selectedEpisode?color=$colorHex&autoPlay=true&nextEpisode=true&overlay=true$progressParam'
-                        : 'https://player.videasy.net/movie/${widget.media['id']}?color=$colorHex&autoPlay=true&overlay=true$progressParam';
+              ),
+              onPressed: () {
+                final String progressParam = '&progress=$mainResumeSeconds';
+                final String placeholderLink = isTvShow
+                    ? 'https://player.videasy.net/tv/${widget.media['id']}/$_selectedSeason/$_selectedEpisode?color=$colorHex&autoPlay=true&nextEpisode=true&overlay=true$progressParam'
+                    : 'https://player.videasy.net/movie/${widget.media['id']}?color=$colorHex&autoPlay=true&overlay=true$progressParam';
 
-                    // Save initial progress when clicking play
-                    ProgressManager.saveProgress(
+                // Save initial progress when clicking play
+                ProgressManager.saveProgress(
+                  media: sourceMedia,
+                  progress: currentProgress == 0 ? 0.05 : currentProgress,
+                  season: isTvShow ? _selectedSeason : null,
+                  episode: isTvShow ? _selectedEpisode : null,
+                  position: mainResumeSeconds,
+                  runtime: runtimeInt,
+                );
+
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => VideoPlayerPage(
+                      videoUrl: placeholderLink,
                       media: sourceMedia,
-                      progress: currentProgress == 0 ? 0.05 : currentProgress,
                       season: isTvShow ? _selectedSeason : null,
                       episode: isTvShow ? _selectedEpisode : null,
-                      position: mainResumeSeconds,
-                      runtime: runtimeInt,
-                    );
-
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => VideoPlayerPage(
-                          videoUrl: placeholderLink,
-                          media: sourceMedia,
-                          season: isTvShow ? _selectedSeason : null,
-                          episode: isTvShow ? _selectedEpisode : null,
-                        ),
-                      ),
+                    ),
+                  ),
                 ).then((videoPlayerChanged) {
-                  if (mounted) { if (videoPlayerChanged == true) setState(() => _hasMadeChanges = true); fetchDetails(); }
+                  if (mounted) {
+                    if (videoPlayerChanged == true) setState(() => _hasMadeChanges = true);
+                    fetchDetails();
+                  }
                 });
-                  },
-                  icon: const Icon(
-                    Icons.play_arrow,
-                    size: 24,
-                  ),
-                  label: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      isTvShow
-                          ? ((currentProgress > 0 && currentProgress < 1.0)
-                              ? 'Resume S$_selectedSeason E$_selectedEpisode'
-                              : 'Play S$_selectedSeason E$_selectedEpisode')
-                          : ((currentProgress > 0 && currentProgress < 1.0)
-                              ? (_isCamRelease ? 'Resume (Cam)' : 'Resume')
-                              : (_isCamRelease ? 'Play (Cam)' : 'Play')),
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+              },
+              icon: const Icon(
+                Icons.play_arrow,
+                size: 24,
+              ),
+              label: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  isTvShow
+                      ? ((currentProgress > 0 && currentProgress < 1.0)
+                          ? 'Resume S$_selectedSeason E$_selectedEpisode'
+                          : 'Play S$_selectedSeason E$_selectedEpisode')
+                      : ((currentProgress > 0 && currentProgress < 1.0)
+                          ? (_isCamRelease ? 'Resume (Cam)' : 'Resume')
+                          : (_isCamRelease ? 'Play (Cam)' : 'Play')),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
             ),
-          )
-        : ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: (!isTvShow && _isCamRelease)
-                  ? Colors.red
-                  : (_dominantColor ?? Colors.white),
-              foregroundColor: (!isTvShow && _isCamRelease)
-                  ? Colors.white
-                  : ((_dominantColor?.computeLuminance() ?? 1.0) < 0.5
-                      ? Colors.white
-                      : Colors.black),
-              padding: const EdgeInsets.symmetric(
-                vertical: 12,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(4.0),
-              ),
-            ),
-            onPressed: () {
-              final String progressParam = '&progress=$mainResumeSeconds';
-              final String placeholderLink = isTvShow
-                  ? 'https://player.videasy.net/tv/${widget.media['id']}/$_selectedSeason/$_selectedEpisode?color=$colorHex&autoPlay=true&nextEpisode=true&overlay=true$progressParam'
-                  : 'https://player.videasy.net/movie/${widget.media['id']}?color=$colorHex&autoPlay=true&overlay=true$progressParam';
-
-              // Save initial progress when clicking play
-              ProgressManager.saveProgress(
-                media: sourceMedia,
-                progress: currentProgress == 0 ? 0.05 : currentProgress,
-                season: isTvShow ? _selectedSeason : null,
-                episode: isTvShow ? _selectedEpisode : null,
-                position: mainResumeSeconds,
-                runtime: runtimeInt,
-              );
-
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => VideoPlayerPage(
-                    videoUrl: placeholderLink,
-                    media: sourceMedia,
-                    season: isTvShow ? _selectedSeason : null,
-                    episode: isTvShow ? _selectedEpisode : null,
-                  ),
-                ),
-            ).then((videoPlayerChanged) {
-              if (mounted) { if (videoPlayerChanged == true) setState(() => _hasMadeChanges = true); fetchDetails(); }
-            });
-            },
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.play_arrow, size: 24),
-                  const SizedBox(width: 8),
-                  Text(
-                    isTvShow
-                        ? ((currentProgress > 0 && currentProgress < 1.0)
-                            ? 'Resume S$_selectedSeason E$_selectedEpisode'
-                            : 'Play S$_selectedSeason E$_selectedEpisode')
-                        : ((currentProgress > 0 && currentProgress < 1.0)
-                            ? (_isCamRelease ? 'Resume (Cam)' : 'Resume')
-                            : (_isCamRelease ? 'Play (Cam)' : 'Play')),
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    softWrap: false,
-                  ),
-                ],
-              ),
-            ),
-          );
+          ),
+        ),
+      );
   }
 
   Widget _buildResolutionButton(
