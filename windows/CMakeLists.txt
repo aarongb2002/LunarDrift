@@ -41,6 +41,13 @@ set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_RELEASE}")
 # Use Unicode for all projects.
 add_definitions(-DUNICODE -D_UNICODE)
 
+# Globally silence experimental C++ coroutine deprecation errors for all plugins
+add_definitions(-D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)
+
+# Globally suppress noisy third-party warnings and linker section conflicts
+add_compile_options(/wd"4244" /wd"4458")
+add_link_options("/IGNORE:4078")
+
 # Compilation settings that should be applied to most targets.
 #
 # Be cautious about adding new options here, as plugins use this function by
@@ -48,11 +55,11 @@ add_definitions(-DUNICODE -D_UNICODE)
 # of modifying this function.
 function(APPLY_STANDARD_SETTINGS TARGET)
   target_compile_features(${TARGET} PUBLIC cxx_std_17)
-  target_compile_options(${TARGET} PRIVATE /W4 /WX /wd"4100")
+  target_compile_options(${TARGET} PRIVATE /W4 /WX /wd"4100" /wd"4244" /wd"4458")
   target_compile_options(${TARGET} PRIVATE /EHsc)
   target_compile_definitions(${TARGET} PRIVATE "_HAS_EXCEPTIONS=0")
   target_compile_definitions(${TARGET} PRIVATE "$<$<CONFIG:Debug>:_DEBUG>")
-  target_link_options(${TARGET} PRIVATE "/IGNORE:4099")
+  target_link_options(${TARGET} PRIVATE "/IGNORE:4099" "/IGNORE:4075" "/IGNORE:4078")
 endfunction()
 
 # Flutter library and tool build rules.

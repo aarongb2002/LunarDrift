@@ -86,11 +86,11 @@ class CachedDownloadItem {
 
   factory CachedDownloadItem.fromJson(Map<String, dynamic> json) {
     return CachedDownloadItem(
-      mediaId: json['mediaId'] as String,
-      title: json['title'] as String,
-      posterPath: json['posterPath'] as String?,
-      mediaType: json['mediaType'] as String,
-      filePath: json['filePath'] as String,
+      mediaId: json['mediaId']?.toString() ?? '',
+      title: json['title']?.toString() ?? 'Unknown',
+      posterPath: json['posterPath']?.toString(),
+      mediaType: json['mediaType']?.toString() ?? 'movie',
+      filePath: json['filePath']?.toString() ?? '',
       downloadedAt: DateTime.tryParse(json['downloadedAt'] as String? ?? '') ?? DateTime.now(),
     );
   }

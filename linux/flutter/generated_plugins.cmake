@@ -4,9 +4,13 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   fullscreen_window
-  fvp
+  media_kit_libs_linux
+  media_kit_video
+  screen_retriever_linux
   url_launcher_linux
+  volume_controller
   webview_win_floating
+  window_manager
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST

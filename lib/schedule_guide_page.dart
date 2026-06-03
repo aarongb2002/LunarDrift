@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'live_tv_page.dart';
+import 'epg_service.dart';
 // ignore: unused_import
 import 'main.dart';
 
@@ -38,6 +39,14 @@ class _ScheduleGuidePageState extends State<ScheduleGuidePage> {
       final matchesResults = await Future.wait(
         sports.map((s) => _api.fetchMatches(sportSlug: s.slug))
       );
+
+      // Ensure EPG is refreshed when the schedule is loaded/refreshed
+      final interestedEpgIds = premiumChannelsList
+          .map((m) => m.epgId)
+          .whereType<String>()
+          .toSet();
+
+      await EpgService().fetchAndParseEPG(interestedChannelIds: interestedEpgIds);
 
       if (mounted) {
         final flatMatches = matchesResults.expand((m) => m).toList();
@@ -87,6 +96,7 @@ class _ScheduleGuidePageState extends State<ScheduleGuidePage> {
                   style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
             ),
           ),
+          const SliverToBoxAdapter(child: PremiumChannelGuide()),
           ...sortedSports.map((sportName) {
             return SliverToBoxAdapter(
               child: Padding(

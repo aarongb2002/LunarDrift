@@ -1,9 +1,16 @@
+// ignore_for_file: duplicate_ignore, deprecated_member_use
+
+import 'dart:io';
+import 'dart:math';
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'dart:convert';
-import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'main.dart'; // Import to access VideoPlayerPage
+import 'epg_service.dart';
 
 // --- Data Models ---
 class Sport {
@@ -36,6 +43,8 @@ class Match {
   final String leagueName;
   final String leagueId;
   final List<Map<String, String>> sources;
+  final bool isPremium;
+  final String? epgId;
 
   Match({
     required this.id,
@@ -49,14 +58,18 @@ class Match {
     required this.leagueName,
     required this.leagueId,
     required this.sources,
+    this.isPremium = false,
+    this.epgId,
   });
 
   bool get isFinished {
+    if (isPremium) return false;
     final now = DateTime.now();
     return now.isAfter(startTime.add(const Duration(hours: 2, minutes: 30)));
   }
 
   bool get isLive {
+    if (isPremium) return true;
     final now = DateTime.now();
     final endEstimate = startTime.add(const Duration(hours: 2, minutes: 30));
     return now.isAfter(startTime.subtract(const Duration(minutes: 5))) && now.isBefore(endEstimate);
@@ -178,6 +191,26 @@ class Match {
       leagueName: json['league']?.toString() ?? json['tournament']?.toString() ?? json['league_name']?.toString() ?? 'Tournament',
       leagueId: json['league_id']?.toString() ?? '',
       sources: sources,
+      isPremium: false,
+      epgId: null,
+    );
+  }
+
+  factory Match.premium({required String id, required String title, required String logoUrl, String? epgId}) {
+    return Match(
+      id: id,
+      title: title,
+      streamUrl: '',
+      startTime: DateTime.now(),
+      sport: Sport(id: 'premium', name: 'Network', logoUrl: '', slug: 'premium'),
+      teamALogo: logoUrl,
+      teamBLogo: '',
+      posterUrl: '',
+      leagueName: 'PREMIUM CHANNEL',
+      leagueId: 'premium',
+      sources: [],
+      isPremium: true,
+      epgId: epgId,
     );
   }
 }
@@ -205,6 +238,7 @@ class LiveSportsApi {
   LiveSportsApi._internal();
 
   final List<String> _baseUrls = [
+    'https://v3.streamed.st/api',
     'https://streamed.st/api',
     'https://streamed.pk/api',
     'https://streami.ru/api',
@@ -227,6 +261,14 @@ class LiveSportsApi {
       final matchesResults = await Future.wait(
         sports.map((s) => fetchMatches(sportSlug: s.slug))
       );
+      
+      // Collect EPG IDs from our premium lineup to filter the massive 1M+ entry EPG file
+      final interestedEpgIds = premiumChannelsList
+          .map((m) => m.epgId)
+          .whereType<String>()
+          .toSet();
+          
+      await EpgService().fetchAndParseEPG(interestedChannelIds: interestedEpgIds);
       
       updateCache(sports, matchesResults.expand((m) => m).toList());
       _hasPrefetched = true;
@@ -255,7 +297,8 @@ class LiveSportsApi {
     if (path.startsWith('http')) return path;
     // Extract filename (ID) without extension from the path
     final id = path.split('/').last.split('.').first;
-    return '$baseUrl/images/badge/$id.webp';
+    final assetBase = baseUrl.replaceAll('/api', '');
+    return '$assetBase/images/badge/$id.webp';
   }
 
   static String _buildMatchPosterUrl(String? path) {
@@ -263,7 +306,8 @@ class LiveSportsApi {
     if (path.startsWith('http')) return path;
     // Extract filename (ID) without extension for the badge placeholder
     final id = path.split('/').last.split('.').first;
-    return '$baseUrl/images/poster/$id/$id.webp';
+    final assetBase = baseUrl.replaceAll('/api', '');
+    return '$assetBase/images/poster/$id/$id.webp';
   }
 
   static String _buildStreamedPkImageUrl(String? path) {
@@ -285,7 +329,7 @@ class LiveSportsApi {
       String url = '${_baseUrls[index]}$path';
       try {
         final response = await http.get(Uri.parse(url), headers: _headers)
-            .timeout(const Duration(seconds: 8));
+            .timeout(const Duration(seconds: 15));
         
         if (response.statusCode == 200) {
           _currentUrlIndex = index; // Persist working URL index
@@ -298,6 +342,252 @@ class LiveSportsApi {
     throw Exception('LiveSportsApi: All endpoints failed.');
   }
 
+  static Future<String?> extractM3u8Stream(String channelId) async {
+    debugPrint('[SCRAPER] --- Initiating extraction for Channel: $channelId ---');
+
+    if (channelId.startsWith('http')) {
+      debugPrint('[SCRAPER] Direct URL detected ($channelId). Analyzing directly...');
+      return await _scrapeAndAnalyzeUrl(channelId);
+    }
+
+    final List<String> endpoints = switch (channelId) {
+      '52' || '343' || '982' || '764' => ['daddy.php'], // CBS, USA, SportsNet USA, SportsNet LA
+      '45' || '325' || '407' || '408' || '753' || '754' || '755' || '60' => ['daddy2.php'], // ESPN2, ion, SN West/East, NBCS Bay Area/Boston/California, F1
+      '663' || '341' => ['daddy4.php'], // NHL Network, truTV
+      '40' => ['daddy5.php'], // TNT Sports
+      // Majority use daddy3 (ABC, CBS Sports, CW, ESPN, ESPNU, Fox, FS1, FS2, GOLF, NBA TV, NBC, NFL Network, tbs, TNT, SN NY, NBCS Philly)
+      _ => ['daddy3.php'],
+    };
+
+    for (final endpoint in endpoints) {
+      final gatewayUrl = 'https://donis.jimpenopisonline.online/premiumtv/$endpoint?id=$channelId';
+      final result = await _scrapeAndAnalyzeUrl(gatewayUrl, referer: 'https://dlhd.pk/');
+      if (result != null) return result;
+    }
+
+    debugPrint('[SCRAPER] --- Extraction Failed for $channelId ---');
+    return null;
+  }
+
+  static Future<String?> _scrapeAndAnalyzeUrl(String url, {String? referer}) async {
+    if (url.isEmpty) return null;
+    debugPrint('[SCRAPER] Requesting URL: $url');
+
+    referer ??= url;
+
+    String originHeader = url;
+    try {
+      final Uri? parsedUrl = Uri.tryParse(url);
+      if (parsedUrl != null && parsedUrl.hasScheme && parsedUrl.hasAuthority) {
+        originHeader = parsedUrl.origin;
+      }
+      final Uri? refUri = Uri.tryParse(referer);
+      if (refUri != null && refUri.hasScheme && refUri.hasAuthority) {
+        originHeader = refUri.origin;
+      } else {
+        originHeader = referer;
+      }
+    } catch (_) {}
+
+    try {
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'Referer': referer,
+          'Origin': originHeader.isNotEmpty ? originHeader : url,
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Sec-Ch-Ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+          'Sec-Ch-Ua-Mobile': '?0',
+          'Sec-Ch-Ua-Platform': '"Windows"',
+          'Sec-Fetch-Dest': 'iframe',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-Site': 'cross-site',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode != 200) {
+        debugPrint('[SCRAPER] FAILED: URL returned status ${response.statusCode}');
+        return null;
+      }
+
+      final html = response.body;
+      debugPrint('[SCRAPER] Page loaded (${html.length} chars). Analyzing strategies...');
+
+      // Strategy 1: Base64 Obfuscation
+      final base64Regex = RegExp(r"window\.atob\('([^']+)'\)");
+      final base64Match = base64Regex.firstMatch(html);
+      if (base64Match != null && (base64Match.group(1)?.isNotEmpty ?? false)) {
+        debugPrint('[SCRAPER] SUCCESS: Found Base64 payload.');
+        final decodedUrl = utf8.decode(base64.decode(base64Match.group(1) ?? ""));
+        return decodedUrl.replaceAll(RegExp(r'[\s\n\r]'), '');
+      }
+
+      // Strategy 2: Packed JS (eval function)
+      if (html.contains('eval(function(p,a,c,k,e,d)')) {
+        debugPrint('[SCRAPER] Strategy: Packed JS detected. Unpacking...');
+        return await _extractCdnLiveTvStream(url, referer: referer);
+      }
+
+      // Strategy 3: Plain text M3U8/HLS fallback
+      final hlsRegex = RegExp(r'''(https?://[^\s"']+\.m3u8[^\s"']*)''');
+      final hlsMatch = hlsRegex.firstMatch(html);
+      if (hlsMatch != null && (hlsMatch.group(0)?.isNotEmpty ?? false)) {
+        debugPrint('[SCRAPER] SUCCESS: Found plain text stream link.');
+        return (hlsMatch.group(0) ?? "").replaceAll(RegExp(r'[\s\n\r]'), '');
+      }
+      
+      // Strategy 4: Adcash/OptimServe pattern detection
+      if (html.contains('window["') && html.contains('] = "')) {
+        debugPrint('[SCRAPER] Strategy: Detected Adcash/OptimServe obfuscation. Attempting Headless Extraction...');
+        return await _extractUsingHeadlessWebView(url, referer: referer);
+      }
+
+      debugPrint('[SCRAPER] WARNING: No known stream patterns found. Falling back to Headless WebView...');
+      return await _extractUsingHeadlessWebView(url, referer: referer);
+    } catch (e) {
+      debugPrint('[SCRAPER] ERROR: Analysis exception: $e');
+    }
+    return null;
+  }
+
+  /// Runs the URL in a headless browser to capture the stream URL from network logs.
+  /// This is the most reliable way to bypass polymorphic obfuscation.
+  static Future<String?> _extractUsingHeadlessWebView(String url, {String? referer}) async {
+    debugPrint('[SCRAPER] Starting Aggressive Headless session for: $url');
+    final completer = Completer<String?>();
+    HeadlessInAppWebView? headlessWebView;
+
+    final uri = Uri.tryParse(url);
+    final origin = uri?.hasScheme == true ? uri!.origin : '';
+    final actualReferer = referer ?? origin;
+
+    headlessWebView = HeadlessInAppWebView(
+      initialUrlRequest: URLRequest(
+        url: WebUri(url),
+        headers: {
+          'Referer': actualReferer,
+          'Origin': origin,
+        },
+      ),
+      initialSettings: InAppWebViewSettings(
+        javaScriptEnabled: true,
+        mediaPlaybackRequiresUserGesture: false,
+        allowsInlineMediaPlayback: true,
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        useShouldInterceptRequest: true,
+        javaScriptCanOpenWindowsAutomatically: false, // Prevent ad popups from taking focus
+        contentBlockers: [
+          ContentBlocker(
+            trigger: ContentBlockerTrigger(urlFilter: ".*(popads|adcash|optimserve|ad-delivery|doubleclick|google-analytics|ad.html|jads.co|ad-maven|onclickads|popmyads|propellerads|exosrv|a-ads).*"),
+            action: ContentBlockerAction(type: ContentBlockerActionType.BLOCK),
+          ),
+        ],
+      ),
+      onConsoleMessage: (controller, consoleMessage) {
+        // Log internal browser messages containing stream links
+        final msg = consoleMessage.message;
+        if (msg.contains('.m3u8') && !msg.contains('ad.html') && !completer.isCompleted) {
+          final hlsRegex = RegExp(r'''(https?://[^\s"']+\.m3u8[^\s"']*)''');
+          final match = hlsRegex.firstMatch(msg);
+          if (match != null) {
+            final foundUrl = match.group(0)!;
+            debugPrint('[SCRAPER] SUCCESS (Console): Captured .m3u8: $foundUrl');
+            completer.complete(foundUrl);
+          }
+        }
+      },
+      onLoadResource: (controller, resource) {
+        final resourceUrl = resource.url?.toString() ?? "";
+        if (resourceUrl.isNotEmpty && 
+            resourceUrl.contains('.m3u8') && 
+            !resourceUrl.contains('ad.html') && 
+            !completer.isCompleted) {
+          debugPrint('[SCRAPER] SUCCESS (Resource): Captured .m3u8: $resourceUrl');
+          completer.complete(resourceUrl);
+        }
+      },
+      shouldInterceptRequest: (controller, request) async {
+        final requestUrl = request.url.toString();
+        if (requestUrl.contains('.m3u8') && !requestUrl.contains('ad.html') && !completer.isCompleted) {
+          debugPrint('[SCRAPER] SUCCESS (Intercept): Captured .m3u8: $requestUrl');
+          completer.complete(requestUrl);
+        }
+        return null;
+      },
+      onLoadStop: (controller, webUrl) async {
+        debugPrint('[SCRAPER] Page load complete. Monitoring stream via interactions...');
+        
+        // Iteratively try to trigger playback and scan for player variables
+        for (int i = 0; i < 15; i++) {
+          if (completer.isCompleted) return;
+          
+          final jsResult = await controller.evaluateJavascript(source: """
+            (function() {
+              // 1. Attempt to click through "click-to-play" overlays
+              var selectors = ['.play-button', '#play', '.ytp-large-play-button', '#player', '.player-poster', 'video', '.play_icon'];
+              selectors.forEach(function(s) {
+                var el = document.querySelector(s);
+                if (el) { el.click(); if(el.play) el.play(); }
+              });
+
+              function scan(w, depth) {
+                if (depth > 3) return null;
+                try {
+                  // 2. Scan standard player objects for resolved stream URLs
+                  if (w.hls && w.hls.url) return w.hls.url;
+                  if (w.player && w.player.src) return typeof w.player.src === 'function' ? w.player.src() : w.player.src;
+                  if (w.clappr && w.clappr.player && w.clappr.player.options) return w.clappr.player.options.source;
+                  if (w.jwplayer && w.jwplayer().getPlaylist) {
+                    var pl = w.jwplayer().getPlaylist();
+                    if (pl && pl[0] && pl[0].file) return pl[0].file;
+                  }
+                  
+                  var v = w.document.querySelector('video');
+                  if (v && v.src && v.src.includes('.m3u8')) return v.src;
+                  var s = w.document.querySelector('source');
+                  if (s && s.src && s.src.includes('.m3u8')) return s.src;
+                  
+                  var frames = w.document.querySelectorAll('iframe');
+                  for (var j = 0; j < frames.length; j++) {
+                    var found = scan(frames[j].contentWindow, depth + 1);
+                    if (found) return found;
+                  }
+                } catch(e) {}
+                return null;
+              }
+
+              return scan(window, 0) || '';
+            })()
+          """);
+
+          if (jsResult != null && jsResult.toString().isNotEmpty && !completer.isCompleted) {
+            debugPrint('[SCRAPER] SUCCESS (JS Scan): Found URL via script: $jsResult');
+            completer.complete(jsResult.toString());
+            return;
+          }
+          await Future.delayed(const Duration(seconds: 2));
+        }
+      },
+    );
+
+    try {
+      await headlessWebView.run();
+      // Extended timeout for slow, ad-heavy mirrors
+      final result = await completer.future.timeout(const Duration(seconds: 40), onTimeout: () {
+        debugPrint('[SCRAPER] Aggressive session timed out.');
+        return null;
+      });
+      return result;
+    } catch (e) {
+      debugPrint('[SCRAPER] Headless session critical error: $e');
+      return null;
+    } finally {
+      await headlessWebView.dispose();
+    }
+  }
+
   Future<List<Sport>> fetchSports() async {
     if (_sportsCache.isNotEmpty) return _sportsCache;
     try {
@@ -305,11 +595,9 @@ class LiveSportsApi {
       if (response.statusCode == 200) {
         List<int> bytes = response.bodyBytes;
         
-        // Robust handling for potential compressed responses without headers
-        if (bytes.length >= 2 && bytes[0] == 0x1F && bytes[1] == 0x8B) {
-          bytes = gzip.decode(bytes);
-        }
-        
+        // Skipping manual gzip decode for WASM compatibility. 
+        // Browser naturally handles Content-Encoding: gzip.
+
         final decodedBody = utf8.decode(bytes);
         final List<dynamic> sportsData = json.decode(decodedBody);
         
@@ -379,7 +667,101 @@ class LiveSportsApi {
     }
     return null;
   }
+  static Future<String?> _extractCdnLiveTvStream(String playerUrl, {String? referer}) async {
+    try {
+      debugPrint('[UNPACKER] Requesting Player Page: $playerUrl');
+      final uri = Uri.tryParse(playerUrl);
+      final actualReferer = referer ?? (uri?.hasScheme == true ? '${uri!.scheme}://${uri.host}/' : 'https://cdnlivetv.tv/');
+      
+      final response = await http.get(
+        Uri.parse(playerUrl),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'Referer': actualReferer,
+        },
+      ).timeout(const Duration(seconds: 10));
 
+      if (response.statusCode != 200) return null;
+      final html = response.body;
+
+      debugPrint('[UNPACKER] Identifying packed payload...');
+      // Locate and isolate the payload string passed inside the packer function
+      // Format: }("UUUmLUUm...", radix, ["dict"], offset, base)
+      final packedRegex = RegExp(r'\}\s*\(\s*"([A-Za-z0-9+/=]+)"\s*,\s*(\d+)\s*,\s*\[([^\]]+)\]\s*,\s*(\d+)\s*,\s*(\d+)');
+      final match = packedRegex.firstMatch(html);
+
+      if (match == null) {
+        debugPrint('[UNPACKER] FAILED: No packed JS payload found in source.');
+        return null;
+      }
+
+      debugPrint('[UNPACKER] SUCCESS: Payload found. Beginning decryption loop...');
+      final String h = match.group(1) ?? "";          // Encrypted string
+      final String rawN = match.group(3) ?? "";       // Dictionary array
+      final int t = int.tryParse(match.group(4) ?? "0") ?? 0;   // Offset
+      final int e = int.tryParse(match.group(5) ?? "0") ?? 0;   // Base index
+
+      if (h.isEmpty || rawN.isEmpty) return null;
+
+      final List<String> n = rawN
+          .split(',')
+          .map((s) => s.trim().replaceAll('"', '').replaceAll("'", ""))
+          .toList();
+
+      // Safety check for dictionary bounds
+      if (e >= n.length) return null;
+      final String delimiter = n[e];
+
+      String unpackedResult = "";
+      int i = 0;
+      
+      while (i < h.length) {
+        String s = "";
+        while (i < h.length && h[i] != delimiter) {
+          s += h[i];
+          i++;
+        }
+        
+        if (s.isNotEmpty) {
+          // Decode base-radix and subtract offset t
+          int decodedVal = _baseRadixDecode(s, e) - t;
+          if (decodedVal > 0) {
+            unpackedResult += String.fromCharCode(decodedVal);
+          }
+        }
+        i++; // Skip delimiter
+      }
+
+      final unpackedHtml = Uri.decodeComponent(unpackedResult);
+
+      // Pluck raw .m3u8 link from the unpacked source
+      final streamRegex = RegExp(r'''(https://[^\s"']+\.m3u8[^\s"']*)''');
+      final streamMatch = streamRegex.firstMatch(unpackedHtml);
+
+      if (streamMatch != null && (streamMatch.group(0)?.isNotEmpty ?? false)) {
+        final foundUrl = (streamMatch.group(0) ?? "").replaceAll(RegExp(r'[\s\n\r]'), '');
+        debugPrint('[UNPACKER] SUCCESS: Extracted M3U8: $foundUrl');
+        return foundUrl;
+      }
+      debugPrint('[UNPACKER] FAILED: No .m3u8 link found in unpacked source.');
+    } catch (err) {
+      debugPrint("[UNPACKER] CRITICAL ERROR: $err");
+    }
+    return null;
+  }
+
+  static int _baseRadixDecode(String digitStr, int base) {
+    const alphabet = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ+/";
+    int val = 0;
+    List<String> chars = digitStr.split('').reversed.toList();
+    for (int c = 0; c < chars.length; c++) {
+      int index = alphabet.indexOf(chars[c]);
+      if (index != -1) {
+        val += (index * pow(base, c)).toInt();
+      }
+    }
+    return val;
+  }
   void updateCache(List<Sport> sports, List<Match> allMatches) {
     _sportsCache = sports;
     
@@ -402,12 +784,51 @@ class LiveTVPage extends StatefulWidget {
   State<LiveTVPage> createState() => _LiveTVPageState();
 }
 
+final List<Match> premiumChannelsList = [
+   Match.premium(id: '766', title: 'ABC', logoUrl: 'https://1000logos.net/wp-content/uploads/2021/10/ABC-logo.png', epgId: 'WABCTV71.us'),
+   Match.premium(id: '52', title: 'CBS', logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/bd/CBS_Eyemark.svg/960px-CBS_Eyemark.svg.png', epgId: 'WFORTV41.us'),
+  Match.premium(id: '308', title: 'CBS Sports Network', logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/04/CBS_Sports_Network_2021.svg/960px-CBS_Sports_Network_2021.svg.png', epgId: 'CBSSportsNetwork.us'),
+  Match.premium(id: '300', title: 'CW', logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b1/The_CW_2024.svg/960px-The_CW_2024.svg.png', epgId: 'CW.us'),
+  Match.premium(id: '44', title: 'ESPN', logoUrl: 'https://1000logos.net/wp-content/uploads/2021/05/ESPN-logo-1536x922.png', epgId: 'ESPN.us'),
+  Match.premium(id: '45', title: 'ESPN2', logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/bf/ESPN2_logo.svg/960px-ESPN2_logo.svg.png', epgId: 'ESPN2.us'),
+  Match.premium(id: '316', title: 'ESPN U', logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/ca/ESPN_U_logo.svg/960px-ESPN_U_logo.svg.png', epgId: 'ESPNU.us'),
+  Match.premium(id: '60', title: 'F1 (Sky Sports)', logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Sky_Sports_F1_-_Logo_2025.svg/960px-Sky_Sports_F1_-_Logo_2025.svg.png', epgId: 'SkySportsF1.uk'),
+  Match.premium(id: '54', title: 'Fox', logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c0/Fox_Broadcasting_Company_logo_%282019%29.svg/960px-Fox_Broadcasting_Company_logo_%282019%29.svg.png', epgId: 'WSVN71.us'),
+  Match.premium(id: '39', title: 'FS1', logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/37/2015_Fox_Sports_1_logo.svg/960px-2015_Fox_Sports_1_logo.svg.png', epgId: 'FoxSports1.us'),
+  Match.premium(id: '758', title: 'FS2', logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/38/FS2_logo_2015.svg/960px-FS2_logo_2015.svg.png', epgId: 'FoxSports2.us'),
+  Match.premium(id: '318', title: 'GOLF Channel', logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fb/Golf_Channel_logo_2025.svg/960px-Golf_Channel_logo_2025.svg.png', epgId: 'GolfChannel.us'),
+  Match.premium(id: '325', title: 'ion', logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/28/Ion_logo.svg/960px-Ion_logo.svg.png', epgId: 'IONTV.us'),
+  Match.premium(id: '404', title: 'NBA TV', logoUrl: 'https://lunardrift.watch/scnsht/nbatv.png', epgId: 'NBATV.us'),
+  Match.premium(id: '769', title: 'NBC', logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/7a/NBC_logo_2022_%28vertical%29.svg/960px-NBC_logo_2022_%28vertical%29.svg.png', epgId: 'WNBC471.us'),
+  Match.premium(id: '753', title: 'NBC Sports Bay Area', logoUrl: 'https://iptv-org.github.io/logos/channels/en/NBCSportsBayArea.png', epgId: 'NBCSportsBayArea.us'),
+  Match.premium(id: '754', title: 'NBC Sports Boston', logoUrl: 'https://iptv-org.github.io/logos/channels/en/NBCSportsBoston.png', epgId: 'NBCSportsBoston.us'),
+  Match.premium(id: '755', title: 'NBC Sports California', logoUrl: 'https://iptv-org.github.io/logos/channels/en/NBCSportsCalifornia.png', epgId: 'NBCSportsCalifornia.us'),
+  Match.premium(id: '777', title: 'NBC Sports Philadelphia', logoUrl: 'https://iptv-org.github.io/logos/channels/en/NBCSportsPhiladelphia.png', epgId: 'NBCSportsPhiladelphia.us'),
+  Match.premium(id: '405', title: 'NFL Network', logoUrl: 'https://iptv-org.github.io/logos/channels/en/NFLNetwork.png', epgId: 'NFLNetwork.us'),
+  Match.premium(id: '663', title: 'NHL Network', logoUrl: 'https://iptv-org.github.io/logos/channels/en/NHLNetwork.png', epgId: 'NHLNetwork.us'),
+  Match.premium(id: '408', title: 'SportsNet East', logoUrl: 'https://iptv-org.github.io/logos/channels/en/SpectrumSportsNet.png', epgId: 'SpectrumSportsNet.us'), 
+  Match.premium(id: '764', title: 'SportsNet LA', logoUrl: 'https://iptv-org.github.io/logos/channels/en/SpectrumSportsNetLA.png', epgId: 'SpectrumSportsNetLA.us'),
+  Match.premium(id: '759', title: 'SportsNet NY', logoUrl: 'https://iptv-org.github.io/logos/channels/en/SNY.png', epgId: 'SNY.us'),
+  Match.premium(id: '407', title: 'SportsNet West', logoUrl: 'https://iptv-org.github.io/logos/channels/en/SpectrumSportsNet.png', epgId: 'SpectrumSportsNet.us'),
+  Match.premium(id: '982', title: 'SportsNet USA', logoUrl: 'https://iptv-org.github.io/logos/channels/en/SpectrumSportsNet.png', epgId: 'SpectrumSportsNet.us'),
+  Match.premium(id: '336', title: 'tbs', logoUrl: 'https://iptv-org.github.io/logos/channels/en/TBS.png', epgId: 'TBS.us'),
+  Match.premium(id: '338', title: 'TNT', logoUrl: 'https://iptv-org.github.io/logos/channels/en/TNT.png', epgId: 'TNT.us'),
+  Match.premium(id: '40', title: 'TNT Sports', logoUrl: 'https://iptv-org.github.io/logos/channels/en/TNTSports.png', epgId: 'TNTSports.uk'),
+  Match.premium(id: '341', title: 'truTV', logoUrl: 'https://iptv-org.github.io/logos/channels/en/TruTV.png', epgId: 'truTV.us'),
+  Match.premium(id: '343', title: 'USA', logoUrl: 'https://iptv-org.github.io/logos/channels/en/USANetwork.png', epgId: 'USANetwork.us'),
+  Match.premium(id: 'https://cdnlivetv.tv/api/v1/channels/player/?name=NBA%20League%20Pass%201&code=us&user=cdnlivetv&plan=free''', title: 'NBA League Pass 1', logoUrl: 'https://iptv-org.github.io/logos/channels/en/NBALeaguePass.png', epgId: 'NBALeaguePass1.us'),
+];
+
+
 class _LiveTVPageState extends State<LiveTVPage> {
   final _api = LiveSportsApi();
   bool _isLoading = true;
   // ignore: unused_field
   List<Sport> _sports = [];
   List<Match> _allMatches = [];
+
+  // ignore: unused_field
+  final List<Match> _premiumChannels = premiumChannelsList;
 
   @override
   void initState() {
@@ -432,6 +853,13 @@ class _LiveTVPageState extends State<LiveTVPage> {
       final matchesResults = await Future.wait(
         sports.map((s) => _api.fetchMatches(sportSlug: s.slug))
       );
+
+      final interestedEpgIds = premiumChannelsList
+          .map((m) => m.epgId)
+          .whereType<String>()
+          .toSet();
+
+      await EpgService().fetchAndParseEPG(interestedChannelIds: interestedEpgIds);
 
       if (mounted) {
         final flatMatches = matchesResults.expand((m) => m).toList();
@@ -480,6 +908,9 @@ class _LiveTVPageState extends State<LiveTVPage> {
                   style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
             ),
           ),
+          const SliverToBoxAdapter(
+            child: PremiumChannelGuide(),
+          ),
           if (_allMatches.isEmpty)
             SliverFillRemaining(
               hasScrollBody: false,
@@ -519,33 +950,327 @@ class _LiveTVPageState extends State<LiveTVPage> {
   }
 }
 
+
+class PremiumChannelGuide extends StatefulWidget {
+  const PremiumChannelGuide({super.key});
+
+  @override
+  State<PremiumChannelGuide> createState() => _PremiumChannelGuideState();
+}
+
+class _PremiumChannelGuideState extends State<PremiumChannelGuide> {
+  final ScrollController _scrollController = ScrollController();
+  bool _isHovering = false;
+  bool _canScrollLeft = false;
+  bool _canScrollRight = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_updateScrollButtons);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _updateScrollButtons());
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_updateScrollButtons);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _updateScrollButtons() {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    final canScrollLeft = position.pixels > 0;
+    final canScrollRight = position.pixels < position.maxScrollExtent;
+
+    if (_canScrollLeft != canScrollLeft || _canScrollRight != canScrollRight) {
+      setState(() {
+        _canScrollLeft = canScrollLeft;
+        _canScrollRight = canScrollRight;
+      });
+    }
+  }
+
+  void _scroll(double amount) {
+    if (!_scrollController.hasClients) return;
+    final target = (_scrollController.offset + amount).clamp(
+      _scrollController.position.minScrollExtent,
+      _scrollController.position.maxScrollExtent,
+    );
+    _scrollController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isMobile = MediaQuery.sizeOf(context).width < 600;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+          child: Text(
+            'CHANNEL GUIDE',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+          ),
+        ),
+        MouseRegion(
+          onEnter: isMobile ? null : (_) => setState(() => _isHovering = true),
+          onExit: isMobile ? null : (_) => setState(() => _isHovering = false),
+          child: SizedBox(
+            height: 110,
+            child: Stack(
+              children: [
+                ListView.builder(
+                  controller: _scrollController,
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                  itemCount: premiumChannelsList.length,
+                  itemBuilder: (context, index) {
+                    final channel = premiumChannelsList[index];
+                    final currentProgram = EpgService().getCurrentProgram(channel.epgId);
+
+                    return GestureDetector(
+                      onTap: () => handleMatchTap(context, channel),
+                      child: Container(
+                        width: 220,
+                        margin: const EdgeInsets.symmetric(horizontal: 4.0),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E1F24),
+                          borderRadius: BorderRadius.circular(8.0),
+                          border: Border.all(color: Colors.white10),
+                        ),
+                        child: Row(
+                          children: [
+                            _TeamLogo(url: channel.teamALogo, size: 45),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    channel.title,
+                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    currentProgram?.title ?? 'No info available',
+                                    style: const TextStyle(color: Color(0xFF1CE783), fontSize: 11, fontWeight: FontWeight.w600),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                if (!isMobile) ...[
+                  IgnorePointer(
+                    ignoring: !(_isHovering && _canScrollLeft),
+                    child: AnimatedOpacity(
+                      opacity: (_isHovering && _canScrollLeft) ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 200),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 8.0),
+                          child: IconButton(
+                            iconSize: 32,
+                            color: Colors.white,
+                            style: IconButton.styleFrom(
+                              backgroundColor: Colors.black.withOpacity(0.7),
+                              hoverColor: Colors.black,
+                            ),
+                            icon: const Icon(Icons.chevron_left),
+                            onPressed: _canScrollLeft ? () => _scroll(-800) : null,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  IgnorePointer(
+                    ignoring: !(_isHovering && _canScrollRight),
+                    child: AnimatedOpacity(
+                      opacity: (_isHovering && _canScrollRight) ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 200),
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 8.0),
+                          child: IconButton(
+                            iconSize: 32,
+                            color: Colors.white,
+                            style: IconButton.styleFrom(
+                              backgroundColor: Colors.black.withOpacity(0.7),
+                              hoverColor: Colors.black,
+                            ),
+                            icon: const Icon(Icons.chevron_right),
+                            onPressed: _canScrollRight ? () => _scroll(800) : null,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 // --- Match Display Widgets ---
 
-class HorizontalMatchList extends StatelessWidget {
+class HorizontalMatchList extends StatefulWidget {
   final String categoryTitle;
   final List<Match> items;
 
   const HorizontalMatchList({super.key, required this.categoryTitle, required this.items});
 
   @override
+  State<HorizontalMatchList> createState() => _HorizontalMatchListState();
+}
+
+class _HorizontalMatchListState extends State<HorizontalMatchList> {
+  final ScrollController _scrollController = ScrollController();
+  bool _isHovering = false;
+  bool _canScrollLeft = false;
+  bool _canScrollRight = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_updateScrollButtons);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _updateScrollButtons());
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_updateScrollButtons);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _updateScrollButtons() {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    final canScrollLeft = position.pixels > 0;
+    final canScrollRight = position.pixels < position.maxScrollExtent;
+
+    if (_canScrollLeft != canScrollLeft || _canScrollRight != canScrollRight) {
+      setState(() {
+        _canScrollLeft = canScrollLeft;
+        _canScrollRight = canScrollRight;
+      });
+    }
+  }
+
+  void _scroll(double amount) {
+    if (!_scrollController.hasClients) return;
+    final target = (_scrollController.offset + amount).clamp(
+      _scrollController.position.minScrollExtent,
+      _scrollController.position.maxScrollExtent,
+    );
+    _scrollController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.sizeOf(context).width < 600;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
           child: Text(
-            categoryTitle.toUpperCase(),
+            widget.categoryTitle.toUpperCase(),
             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
           ),
         ),
-        SizedBox(
-          height: 175,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12.0),
-            itemCount: items.length,
-            itemBuilder: (context, index) => MatchCard(match: items[index]),
+        MouseRegion(
+          onEnter: isMobile ? null : (_) => setState(() => _isHovering = true),
+          onExit: isMobile ? null : (_) => setState(() => _isHovering = false),
+          child: SizedBox(
+            height: 175,
+            child: Stack(
+              children: [
+                ListView.builder(
+                  controller: _scrollController,
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                  itemCount: widget.items.length,
+                  itemBuilder: (context, index) => MatchCard(match: widget.items[index]),
+                ),
+                if (!isMobile) ...[
+                  IgnorePointer(
+                    ignoring: !(_isHovering && _canScrollLeft),
+                    child: AnimatedOpacity(
+                      opacity: (_isHovering && _canScrollLeft) ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 200),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 8.0),
+                          child: IconButton(
+                            iconSize: 32,
+                            color: Colors.white,
+                            style: IconButton.styleFrom(
+                              backgroundColor: Colors.black.withOpacity(0.7),
+                              hoverColor: Colors.black,
+                            ),
+                            icon: const Icon(Icons.chevron_left),
+                            onPressed: _canScrollLeft ? () => _scroll(-800) : null,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  IgnorePointer(
+                    ignoring: !(_isHovering && _canScrollRight),
+                    child: AnimatedOpacity(
+                      opacity: (_isHovering && _canScrollRight) ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 200),
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 8.0),
+                          child: IconButton(
+                            iconSize: 32,
+                            color: Colors.white,
+                            style: IconButton.styleFrom(
+                              backgroundColor: Colors.black.withOpacity(0.7),
+                              hoverColor: Colors.black,
+                            ),
+                            icon: const Icon(Icons.chevron_right),
+                            onPressed: _canScrollRight ? () => _scroll(800) : null,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
       ],
@@ -555,7 +1280,7 @@ class HorizontalMatchList extends StatelessWidget {
 
 // --- Navigation Helper ---
 Future<void> handleMatchTap(BuildContext context, Match match) async {
-  if (match.isLive) {
+  if (match.isLive || match.isPremium) {
     // Show a loading dialog while we fetch the specific live stream info
     showDialog(
       context: context,
@@ -564,13 +1289,68 @@ Future<void> handleMatchTap(BuildContext context, Match match) async {
     );
 
     String? streamUrl;
-    if (match.sources.isNotEmpty) {
-      // Default to the second source if available
-      final source = match.sources.length > 1 ? match.sources[1] : match.sources.first;
-      streamUrl = await LiveSportsApi().fetchStreamUrl(
-        source['source']!,
-        source['id']!,
-      );
+    Map<String, String>? customHeaders;
+
+    const int maxRetries = 5;
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      debugPrint('[SCRAPER] Attempt $attempt for channel: ${match.title}');
+      
+      if (match.isPremium) {
+        streamUrl = await LiveSportsApi.extractM3u8Stream(match.id);
+        if (streamUrl != null) {
+          final uri = Uri.tryParse(match.id);
+          final origin = uri?.hasScheme == true ? uri!.origin : 'https://dlhd.pk';
+          final referer = uri?.hasScheme == true ? match.id : 'https://dlhd.pk/';
+          
+          customHeaders = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Referer': referer,
+            'Origin': origin,
+            'Accept': '*/*',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Sec-Ch-Ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': '"Windows"',
+            'Sec-Fetch-Dest': 'empty',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'cross-site',
+          };
+          break; // Success, exit loop
+        }
+      } else if (match.sources.isNotEmpty) {
+        // Default to the second source if available
+        final source =
+            match.sources.length > 1 ? match.sources[1] : match.sources.first;
+        final embedUrl = await LiveSportsApi().fetchStreamUrl(
+          source['source']!,
+          source['id']!,
+        );
+
+        if (embedUrl != null) {
+          debugPrint('[SCRAPER] Live match embed found ($embedUrl). Scraping for source...');
+          streamUrl = await LiveSportsApi.extractM3u8Stream(embedUrl);
+          
+          if (streamUrl != null) {
+            // Set headers based on the embed source to prevent 403 Forbidden
+            customHeaders = {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+              'Referer': embedUrl,
+              'Origin': Uri.tryParse(embedUrl)?.hasScheme == true ? Uri.parse(embedUrl).origin : embedUrl,
+              'Accept': '*/*',
+              'Accept-Language': 'en-US,en;q=0.9',
+              'Sec-Fetch-Dest': 'empty',
+              'Sec-Fetch-Mode': 'cors',
+              'Sec-Fetch-Site': 'cross-site',
+            };
+            break; // Success, exit loop
+          }
+        }
+      }
+      
+      if (attempt < maxRetries) {
+        // Small incremental delay between retries
+        await Future.delayed(Duration(milliseconds: 500 * attempt));
+      }
     }
 
     if (context.mounted) {
@@ -578,7 +1358,7 @@ Future<void> handleMatchTap(BuildContext context, Match match) async {
 
       if (streamUrl != null && streamUrl.isNotEmpty) {
         // Append autoplay parameter if not already present
-        if (!streamUrl.contains('autoplay=')) {
+        if (!match.isPremium && !streamUrl.contains('autoplay=')) {
           final separator = streamUrl.contains('?') ? '&' : '?';
           // ignore: unnecessary_brace_in_string_interps
           streamUrl = '${streamUrl}${separator}autoplay=1';
@@ -588,14 +1368,19 @@ Future<void> handleMatchTap(BuildContext context, Match match) async {
           context,
           MaterialPageRoute(
             builder: (context) => VideoPlayerPage(
-              videoUrl: streamUrl,
+              videoUrl: streamUrl!,
               sources: match.sources,
               matchTitle: match.title,
+              customHeaders: customHeaders,
             ),
           ),
         );
       } else {
-        AppNotification.show(context, 'No active streams available for this match.', color: Colors.red);
+        AppNotification.show(
+          context,
+          'No active streams available for this ${match.isPremium ? 'channel' : 'match'}.',
+          color: Colors.red,
+        );
       }
     }
   } else {
@@ -630,6 +1415,7 @@ class MatchCard extends StatelessWidget {
                 Positioned.fill(
                   child: CachedNetworkImage(
                     imageUrl: match.posterUrl,
+                    httpHeaders: const {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'},
                     fit: BoxFit.cover,
                     // ignore: deprecated_member_use
                     color: Colors.black.withOpacity(0.7),
@@ -662,13 +1448,20 @@ class MatchCard extends StatelessWidget {
                     const SizedBox(height: 8),
                     Text(match.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15), textAlign: TextAlign.center, maxLines: 2),
                     const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        _TeamLogo(url: match.teamALogo),
-                        const Text('vs', style: TextStyle(color: Colors.white54, fontSize: 18)),
-                        _TeamLogo(url: match.teamBLogo),
-                      ],
+                    if (match.isPremium)
+                      Expanded(
+                        child: Center(
+                          child: _TeamLogo(url: match.teamALogo, size: 65),
+                        ),
+                      )
+                    else
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          _TeamLogo(url: match.teamALogo),
+                          const Text('vs', style: TextStyle(color: Colors.white54, fontSize: 18)),
+                          _TeamLogo(url: match.teamBLogo),
+                        ],
                     ),
                     const Spacer(),
                     Text(_formatMatchTime(context, match.startTime), style: const TextStyle(color: Colors.white70, fontSize: 12)),
@@ -891,15 +1684,19 @@ class _TeamLogo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (url.isEmpty) {
-      return Container(width: size, height: size, decoration: const BoxDecoration(color: Colors.white10, shape: BoxShape.circle), child: const Icon(Icons.shield, color: Colors.white24));
+      return Container(width: size, height: size, decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.shield, color: Colors.white24));
     }
     return CachedNetworkImage(
       imageUrl: url,
       width: size,
       height: size,
       fit: BoxFit.contain,
-      placeholder: (context, url) => Container(width: size, height: size, decoration: const BoxDecoration(color: Colors.white10, shape: BoxShape.circle)),
-      errorWidget: (context, url, error) => Container(width: size, height: size, decoration: const BoxDecoration(color: Colors.white10, shape: BoxShape.circle), child: const Icon(Icons.shield, color: Colors.white24)),
+      httpHeaders: const {
+        'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      },
+      placeholder: (context, url) => Container(width: size, height: size, decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(8))),
+      errorWidget: (context, url, error) => Container(width: size, height: size, decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.shield, color: Colors.white24)),
     );
   }
 }

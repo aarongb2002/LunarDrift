@@ -9,9 +9,13 @@ list(APPEND FLUTTER_PLUGIN_LIST
   firebase_core
   flutter_inappwebview_windows
   fullscreen_window
-  fvp
+  media_kit_libs_windows_video
+  media_kit_video
+  screen_retriever_windows
   url_launcher_windows
+  volume_controller
   webview_win_floating
+  window_manager
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
